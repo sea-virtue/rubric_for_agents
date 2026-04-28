@@ -29,7 +29,39 @@ Install vLLM in a suitable CUDA environment:
 pip install vllm
 ```
 
-Start Qwen3 8B Instruct:
+You can either let vLLM download the model automatically into the Hugging Face
+cache, or pre-download it into this project's ignored `models/` directory.
+
+Automatic download:
+
+```bash
+MODEL="Qwen/Qwen3-7B-Instruct" \
+SERVED_MODEL_NAME="qwen3-7b-instruct" \
+PORT=8000 \
+local_inference/start_vllm_qwen.sh
+```
+
+Pre-download to `models/`:
+
+```bash
+pip install huggingface-hub
+chmod +x local_inference/download_hf_model.sh
+
+MODEL_ID="Qwen/Qwen3-7B-Instruct" \
+LOCAL_DIR="models/qwen3-7b-instruct" \
+local_inference/download_hf_model.sh
+```
+
+Then run vLLM from the local path:
+
+```bash
+MODEL="models/qwen3-7b-instruct" \
+SERVED_MODEL_NAME="qwen3-7b-instruct" \
+PORT=8000 \
+local_inference/start_vllm_qwen.sh
+```
+
+Start Qwen3 7B Instruct:
 
 ```bash
 chmod +x local_inference/start_vllm_qwen.sh

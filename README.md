@@ -54,6 +54,7 @@ configs/
   local_qwen3_vllm_hf_embedding.json
 local_inference/
   README.md
+  download_hf_model.sh
   start_vllm_qwen.sh
   start_hf_openai_server.sh
   hf_openai_server.py
@@ -93,6 +94,23 @@ local_inference/start_vllm_qwen.sh
 
 export OPENAI_API_KEY="local"
 python src/miner.py --config configs/local_qwen3_vllm.json
+```
+
+For more reproducible server runs, pre-download models into the ignored
+`models/` directory:
+
+```bash
+pip install huggingface-hub
+chmod +x local_inference/download_hf_model.sh
+
+MODEL_ID="Qwen/Qwen3-7B-Instruct" \
+LOCAL_DIR="models/qwen3-7b-instruct" \
+local_inference/download_hf_model.sh
+
+MODEL="models/qwen3-7b-instruct" \
+SERVED_MODEL_NAME="qwen3-7b-instruct" \
+PORT=8000 \
+local_inference/start_vllm_qwen.sh
 ```
 
 For vLLM chat plus local HF embeddings:

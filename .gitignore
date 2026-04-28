@@ -1,4 +1,10 @@
 data/agent-reward-bench/
 RubricHub-main/
-RubricHub-main.zipdata/
+RubricHub-main.zip
+models/
+outputs/
+*.log
+*.tmp
+__pycache__/
+*.pyc
 data/
