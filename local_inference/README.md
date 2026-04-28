@@ -29,12 +29,12 @@ Install vLLM in a suitable CUDA environment:
 pip install vllm
 ```
 
-Start Qwen3 7B Instruct:
+Start Qwen3 8B Instruct:
 
 ```bash
 chmod +x local_inference/start_vllm_qwen.sh
-MODEL="Qwen/Qwen3-7B-Instruct" \
-SERVED_MODEL_NAME="qwen3-7b-instruct" \
+MODEL="Qwen/qwen3-8b-instruct" \
+SERVED_MODEL_NAME="qwen3-8b-instruct" \
 PORT=8000 \
 local_inference/start_vllm_qwen.sh
 ```
@@ -76,8 +76,8 @@ local_inference/start_hf_openai_server.sh
 Run a small direct HF chat server too:
 
 ```bash
-CHAT_MODEL="Qwen/Qwen3-7B-Instruct" \
-SERVED_CHAT_MODEL_NAME="qwen3-7b-instruct" \
+CHAT_MODEL="Qwen/qwen3-8b-instruct" \
+SERVED_CHAT_MODEL_NAME="qwen3-8b-instruct" \
 EMBEDDING_MODEL="" \
 PORT=8000 \
 local_inference/start_hf_openai_server.sh
