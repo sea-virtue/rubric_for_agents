@@ -3,3 +3,4 @@ uvicorn
 torch
 transformers
 sentence-transformers
+huggingface-hub
