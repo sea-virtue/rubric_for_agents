@@ -35,8 +35,8 @@ cache, or pre-download it into this project's ignored `models/` directory.
 Automatic download:
 
 ```bash
-MODEL="Qwen/Qwen3-7B-Instruct" \
-SERVED_MODEL_NAME="qwen3-7b-instruct" \
+MODEL="Qwen/Qwen3-8B-Instruct" \
+SERVED_MODEL_NAME="qwen3-8b-instruct" \
 PORT=8000 \
 local_inference/start_vllm_qwen.sh
 ```
@@ -47,21 +47,21 @@ Pre-download to `models/`:
 pip install huggingface-hub
 chmod +x local_inference/download_hf_model.sh
 
-MODEL_ID="Qwen/Qwen3-7B-Instruct" \
-LOCAL_DIR="models/qwen3-7b-instruct" \
+MODEL_ID="Qwen/Qwen3-8B-Instruct" \
+LOCAL_DIR="models/qwen3-8b-instruct" \
 local_inference/download_hf_model.sh
 ```
 
 Then run vLLM from the local path:
 
 ```bash
-MODEL="models/qwen3-7b-instruct" \
-SERVED_MODEL_NAME="qwen3-7b-instruct" \
+MODEL="models/qwen3-8b-instruct" \
+SERVED_MODEL_NAME="qwen3-8b-instruct" \
 PORT=8000 \
 local_inference/start_vllm_qwen.sh
 ```
 
-Start Qwen3 7B Instruct:
+Start Qwen3 8B Instruct:
 
 ```bash
 chmod +x local_inference/start_vllm_qwen.sh

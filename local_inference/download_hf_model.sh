@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MODEL_ID="${MODEL_ID:-Qwen/Qwen3-7B-Instruct}"
-LOCAL_DIR="${LOCAL_DIR:-models/qwen3-7b-instruct}"
+MODEL_ID="${MODEL_ID:-Qwen/Qwen3-8B-Instruct}"
+LOCAL_DIR="${LOCAL_DIR:-models/qwen3-8b-instruct}"
 REVISION="${REVISION:-main}"
 
 mkdir -p "$(dirname "${LOCAL_DIR}")"
