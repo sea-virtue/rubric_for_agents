@@ -87,8 +87,8 @@ For local Qwen3 Instruct with vLLM:
 
 ```bash
 chmod +x local_inference/start_vllm_qwen.sh
-MODEL="Qwen/Qwen3-7B-Instruct" \
-SERVED_MODEL_NAME="qwen3-7b-instruct" \
+MODEL="Qwen/qwen3-8b-instruct" \
+SERVED_MODEL_NAME="qwen3-8b-instruct" \
 PORT=8000 \
 local_inference/start_vllm_qwen.sh
 

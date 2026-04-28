@@ -7,9 +7,9 @@
   "embedding_api_key_env": "OPENAI_API_KEY",
   "embedding_base_url": "http://localhost:8001/v1",
   "rubric_models": [
-    "qwen3-7b-instruct"
+    "qwen3-8b-instruct"
   ],
-  "merge_model": "qwen3-7b-instruct",
+  "merge_model": "qwen3-8b-instruct",
   "embedding_model": "bge-m3",
   "min_model_support": 1,
   "concurrency": 2,
