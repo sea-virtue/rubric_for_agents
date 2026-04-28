@@ -1,0 +1,20 @@
+{
+  "input": "data/agent-reward-bench/trajectories",
+  "input_format": "agent_reward_bench",
+  "out_dir": "outputs/local_qwen3_vllm",
+  "api_key_env": "OPENAI_API_KEY",
+  "base_url": "http://localhost:8000/v1",
+  "rubric_models": [
+    "qwen3-7b-instruct"
+  ],
+  "merge_model": "qwen3-7b-instruct",
+  "embedding_model": "",
+  "min_model_support": 1,
+  "concurrency": 2,
+  "cluster_algorithm": "connected",
+  "cluster_threshold": 0.34,
+  "min_cluster_size": 2,
+  "generalization_threshold": 0.74,
+  "max_records_per_cluster": 12,
+  "max_chars_per_trace": 5000
+}

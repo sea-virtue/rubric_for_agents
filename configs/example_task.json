@@ -1,0 +1,27 @@
+{
+  "input": "data/traces.jsonl",
+  "input_format": null,
+  "field_map": {
+    "__record_id__": "trace_id",
+    "task": "task",
+    "outcome": "success",
+    "trace": "messages"
+  },
+  "csv_group_by": null,
+  "out_dir": "outputs/example_task",
+  "rubric_models": [
+    "gpt-4.1-mini",
+    "gpt-4.1",
+    "gpt-4.1-mini"
+  ],
+  "merge_model": "gpt-4.1",
+  "embedding_model": "text-embedding-3-small",
+  "min_model_support": 2,
+  "concurrency": 4,
+  "cluster_algorithm": "dbscan",
+  "cluster_threshold": 0.74,
+  "min_cluster_size": 2,
+  "generalization_threshold": 0.74,
+  "max_records_per_cluster": 20,
+  "max_chars_per_trace": 6000
+}
