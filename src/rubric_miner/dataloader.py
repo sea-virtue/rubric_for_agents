@@ -35,10 +35,16 @@ class TraceDataLoader:
         input_format: Optional[str] = None,
         field_map: Optional[Mapping[str, str]] = None,
         csv_group_by: Optional[str] = None,
+        max_records: Optional[int] = None,
+        agent_reward_observation_chars: int = 1200,
+        agent_reward_observation_policy: str = "last",
     ) -> None:
         self.input_format = input_format
         self.field_map = dict(field_map or {})
         self.csv_group_by = csv_group_by
+        self.max_records = max_records
+        self.agent_reward_observation_chars = agent_reward_observation_chars
+        self.agent_reward_observation_policy = agent_reward_observation_policy
 
     def load(self, path: Path) -> List[Dict[str, Any]]:
         if not path.exists():
@@ -62,6 +68,8 @@ class TraceDataLoader:
             raw_records = self._read_csv(path)
         else:
             raise ValueError(f"unsupported input format: {fmt}")
+        if self.max_records is not None:
+            raw_records = raw_records[: self.max_records]
         return [self.normalize_record(item, idx) for idx, item in enumerate(raw_records)]
 
     def normalize_record(self, item: Any, idx: int) -> Dict[str, Any]:
@@ -86,7 +94,7 @@ class TraceDataLoader:
                 for key, value in item.items()
                 if key not in set(ID_KEYS + TASK_KEYS + OUTCOME_KEYS + TRACE_KEYS + STEP_KEYS)
             },
-            "raw_input": item,
+            "raw_input": {"source_keys": sorted(map(str, item.keys()))},
         }
         return canonical
 
@@ -115,6 +123,8 @@ class TraceDataLoader:
 
         records: List[Dict[str, Any]] = []
         for file_path in sorted(cleaned_root.rglob("*.json")):
+            if self.max_records is not None and len(records) >= self.max_records:
+                break
             try:
                 with file_path.open("r", encoding="utf-8") as handle:
                     raw = json.load(handle)
@@ -241,11 +251,13 @@ class TraceDataLoader:
         if not isinstance(steps, list):
             return []
         normalized = []
+        last_step_pos = len(steps) - 1
         for idx, step in enumerate(steps):
             if not isinstance(step, dict):
                 normalized.append({"index": idx, "content": str(step)})
                 continue
             step_num = step.get("num", idx)
+            last_action_error = step.get("last_action_error")
             normalized.append(
                 {
                     "index": step_num,
@@ -256,7 +268,7 @@ class TraceDataLoader:
                     "screenshot_path": step.get("screenshot_path", ""),
                 }
             )
-            observation = self._short_observation(step)
+            observation = self._short_observation(step) if self._keep_agent_reward_observation(idx, last_step_pos, last_action_error) else ""
             if observation:
                 normalized.append(
                     {
@@ -266,21 +278,31 @@ class TraceDataLoader:
                         "screenshot_path": step.get("screenshot_path", ""),
                     }
                 )
-            if step.get("last_action_error"):
+            if last_action_error:
                 normalized.append(
                     {
                         "index": f"{step_num}.error",
-                        "error": step.get("last_action_error", ""),
+                        "error": last_action_error,
                         "action": step.get("action", ""),
                     }
                 )
         return normalized
 
+    def _keep_agent_reward_observation(self, idx: int, last_step_pos: int, last_action_error: Any) -> bool:
+        policy = str(self.agent_reward_observation_policy or "last").lower()
+        if policy == "none":
+            return False
+        if policy == "all":
+            return True
+        if policy == "last_and_errors":
+            return idx == last_step_pos or bool(last_action_error)
+        return idx == last_step_pos
+
     def _short_observation(self, step: Mapping[str, Any]) -> str:
         for key in ("axtree_pruned", "axtree"):
             value = step.get(key)
             if isinstance(value, str) and value.strip():
-                return value[:3000]
+                return value[: self.agent_reward_observation_chars]
         return ""
 
     def _agent_reward_outcome(

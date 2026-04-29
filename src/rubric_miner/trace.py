@@ -6,6 +6,7 @@ import re
 from collections import Counter
 from typing import Any, Dict, List, Mapping, Sequence
 
+from .compressor import compact_trace
 from .schemas import TraceParsed, model_dump
 
 
@@ -108,7 +109,11 @@ def parse_trace_record(record: Mapping[str, Any]) -> Dict[str, Any]:
         ("task", "question", "prompt", "instruction", "goal", "user_request", "query"),
     )
     trace_source = _trace_source(record)
-    trace_text = flatten_trace(trace_source)
+    outcome = infer_outcome(record)
+    compact = compact_trace(task=task, outcome=outcome, trace_source=trace_source)
+    trace_text = str(compact.get("text", "")) or flatten_trace(trace_source)
+    compact_for_storage = dict(compact)
+    compact_for_storage.pop("text", None)
     structured_sequence = segment_trace(trace_source)
     features = extract_trace_features(structured_sequence, trace_text)
     if not task:
@@ -118,11 +123,17 @@ def parse_trace_record(record: Mapping[str, Any]) -> Dict[str, Any]:
     parsed = TraceParsed(
         __record_id__=record_id,
         task=task,
-        outcome=infer_outcome(record),
+        outcome=outcome,
         trace_text=trim_text(trace_text, 20000),
+        compact_trace=compact_for_storage,
         structured_sequence=structured_sequence,
         features=features,
-        raw=record,
+        raw={
+            "__record_id__": record_id,
+            "task": task,
+            "outcome": outcome,
+                "metadata": record.get("metadata", {}),
+        },
         metadata={
             key: value
             for key, value in record.items()
@@ -136,6 +147,7 @@ def parse_trace_record(record: Mapping[str, Any]) -> Dict[str, Any]:
                 "events",
                 "conversation",
                 "log",
+                "raw_input",
             }
         },
     )
@@ -171,7 +183,7 @@ def segment_trace(trace_source: Any) -> List[Dict[str, Any]]:
                 "type": event_type,
                 "role": role,
                 "tool_name": tool_name,
-                "summary": trim_text(text, 700),
+                "summary": trim_text(text, 260),
             }
         )
     return events

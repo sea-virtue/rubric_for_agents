@@ -16,12 +16,27 @@ async def parse_stage(
     input_format: Optional[str] = None,
     field_map: Optional[Mapping[str, str]] = None,
     csv_group_by: Optional[str] = None,
+    max_records: Optional[int] = None,
+    agent_reward_observation_chars: int = 1200,
+    agent_reward_observation_policy: str = "last",
 ) -> List[Dict[str, Any]]:
+    logger.info(
+        "loading_input_start",
+        extra={
+            "stage": "trace_parse",
+            "input": str(input_path),
+            "input_format": input_format,
+            "max_records": max_records,
+        },
+    )
     raw_records = read_input_records(
         input_path,
         input_format=input_format,
         field_map=field_map,
         csv_group_by=csv_group_by,
+        max_records=max_records,
+        agent_reward_observation_chars=agent_reward_observation_chars,
+        agent_reward_observation_policy=agent_reward_observation_policy,
     )
     stage_records = load_json_array(output_path)
     ok_index = good_record_index(stage_records)

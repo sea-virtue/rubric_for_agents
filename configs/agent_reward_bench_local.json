@@ -1,6 +1,7 @@
 {
   "input": "data/agent-reward-bench/trajectories",
   "input_format": "agent_reward_bench",
+  "agent_reward_observation_policy": "last",
   "out_dir": "outputs/agent_reward_bench_local",
   "rubric_models": [
     "gpt-4.1-mini",

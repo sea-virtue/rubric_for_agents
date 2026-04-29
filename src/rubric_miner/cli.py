@@ -54,6 +54,9 @@ async def run_pipeline(args: argparse.Namespace) -> None:
         input_format=config.input_format,
         field_map=config.field_map,
         csv_group_by=config.csv_group_by,
+        max_records=config.max_input_records,
+        agent_reward_observation_chars=config.agent_reward_observation_chars,
+        agent_reward_observation_policy=config.agent_reward_observation_policy,
     )
     clusters = await cluster_stage(
         parsed,
@@ -112,6 +115,19 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument("--field-map", default=None, help="Comma pairs, e.g. task=question,trace=trajectory")
     parser.add_argument("--csv-group-by", default=None, help="Column used to group multi-row CSV traces")
+    parser.add_argument("--max-input-records", type=int, default=None, help="Load only the first N input records")
+    parser.add_argument(
+        "--agent-reward-observation-chars",
+        type=int,
+        default=None,
+        help="Max chars kept from AgentRewardBench axtree/axtree_pruned per observation",
+    )
+    parser.add_argument(
+        "--agent-reward-observation-policy",
+        choices=["last", "last_and_errors", "all", "none"],
+        default=None,
+        help="Which AgentRewardBench steps keep axtree observations",
+    )
     parser.add_argument("--out-dir", type=Path, default=None)
     parser.add_argument("--base-url", default=None, help="OpenAI-compatible chat base URL")
     parser.add_argument("--embedding-base-url", default=None, help="OpenAI-compatible embedding base URL")
@@ -149,6 +165,9 @@ def apply_cli_overrides(config: object, args: argparse.Namespace) -> None:
         "input",
         "input_format",
         "csv_group_by",
+        "max_input_records",
+        "agent_reward_observation_chars",
+        "agent_reward_observation_policy",
         "out_dir",
         "merge_model",
         "concurrency",

@@ -9,13 +9,17 @@ from .trace import trim_text
 def trace_snippets(records: Sequence[Mapping[str, Any]], max_records: int, max_chars: int) -> str:
     chunks: List[str] = []
     for record in records[:max_records]:
+        trace_text = str(record.get("trace_text", ""))
+        compact = record.get("compact_trace")
+        if isinstance(compact, Mapping) and compact.get("timeline"):
+            trace_text = trace_text or json.dumps(compact, ensure_ascii=False)
         chunks.append(
             "\n".join(
                 [
                     f"__record_id__: {record.get('__record_id__')}",
                     f"task: {trim_text(str(record.get('task', '')), 600)}",
                     f"outcome: {record.get('outcome', 'unknown')}",
-                    f"trace: {trim_text(str(record.get('trace_text', '')), max_chars)}",
+                    f"compact_trace: {trim_text(trace_text, max_chars)}",
                 ]
             )
         )

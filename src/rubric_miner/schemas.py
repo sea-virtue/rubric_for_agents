@@ -32,6 +32,7 @@ class TraceParsed(CompatModel):
     task: str = ""
     outcome: str = "unknown"
     trace_text: str
+    compact_trace: Dict[str, Any] = Field(default_factory=dict)
     structured_sequence: List[Dict[str, Any]] = Field(default_factory=list)
     features: Dict[str, Any] = Field(default_factory=dict)
     raw: Any

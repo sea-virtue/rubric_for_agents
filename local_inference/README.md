@@ -29,55 +29,20 @@ Install vLLM in a suitable CUDA environment:
 pip install vllm
 ```
 
-You can either let vLLM download the model automatically into the Hugging Face
-cache, or pre-download it into this project's ignored `models/` directory.
-
-Automatic download:
-
-```bash
-MODEL="Qwen/Qwen3-4B-Instruct-2507" \
-SERVED_MODEL_NAME="qwen3-4b-instruct-2507" \
-PORT=8000 \
-local_inference/start_vllm_qwen.sh
-```
-
-Pre-download to `models/`:
+Download the default Qwen3 4B Instruct 2507 model to the ignored
+`local_inference/models/` directory:
 
 ```bash
 pip install huggingface-hub
 chmod +x local_inference/download_hf_model.sh
-
-MODEL_ID="Qwen/Qwen3-4B-Instruct-2507" \
-LOCAL_DIR="local_inference/models/qwen3-4b-instruct-2507" \
-local_inference/download_hf_model.sh
+bash local_inference/download_hf_model.sh
 ```
 
-Then run vLLM from the local path:
-
-```bash
-MODEL="local_inference/models/qwen3-4b-instruct-2507" \
-SERVED_MODEL_NAME="qwen3-4b-instruct-2507" \
-PORT=8000 \
-local_inference/start_vllm_qwen.sh
-```
-
-Start Qwen3 4B Instruct 2507:
+Start vLLM with the default local model path:
 
 ```bash
 chmod +x local_inference/start_vllm_qwen.sh
-MODEL="Qwen/Qwen3-4B-Instruct-2507" \
-SERVED_MODEL_NAME="qwen3-4b-instruct-2507" \
-PORT=8000 \
-local_inference/start_vllm_qwen.sh
-```
-
-Start Qwen3 14B Instruct:
-
-```bash
-MODEL="Qwen/Qwen3-14B-Instruct" \
-SERVED_MODEL_NAME="qwen3-14b-instruct" \
-PORT=8000 \
-local_inference/start_vllm_qwen.sh
+bash local_inference/start_vllm_qwen.sh
 ```
 
 Then point miner at the server:
@@ -85,6 +50,15 @@ Then point miner at the server:
 ```bash
 export OPENAI_API_KEY="local"
 python src/miner.py --config configs/local_qwen3_vllm.json
+```
+
+To use a different model, edit `MODEL` and `SERVED_MODEL_NAME` near the top of
+`start_vllm_qwen.sh`, or override them once:
+
+```bash
+MODEL="local_inference/models/qwen3-14b-instruct" \
+SERVED_MODEL_NAME="qwen3-14b-instruct" \
+bash local_inference/start_vllm_qwen.sh
 ```
 
 ## HF OpenAI-Compatible Server

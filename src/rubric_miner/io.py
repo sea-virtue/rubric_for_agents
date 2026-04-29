@@ -64,10 +64,16 @@ def read_input_records(
     input_format: Optional[str] = None,
     field_map: Optional[Mapping[str, str]] = None,
     csv_group_by: Optional[str] = None,
+    max_records: Optional[int] = None,
+    agent_reward_observation_chars: int = 1200,
+    agent_reward_observation_policy: str = "last",
 ) -> List[Dict[str, Any]]:
     loader = TraceDataLoader(
         input_format=input_format,
         field_map=field_map,
         csv_group_by=csv_group_by,
+        max_records=max_records,
+        agent_reward_observation_chars=agent_reward_observation_chars,
+        agent_reward_observation_policy=agent_reward_observation_policy,
     )
     return loader.load(path)

@@ -15,6 +15,9 @@ class MinerConfig(CompatModel):
     input_format: Optional[str] = None
     field_map: Dict[str, str] = Field(default_factory=dict)
     csv_group_by: Optional[str] = None
+    max_input_records: Optional[int] = None
+    agent_reward_observation_chars: int = 1200
+    agent_reward_observation_policy: str = "last"
     out_dir: Path = Path("outputs/rubric_miner")
     log_file: Optional[Path] = None
     verbose: bool = False

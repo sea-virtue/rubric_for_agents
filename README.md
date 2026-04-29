@@ -87,10 +87,7 @@ For local Qwen3 Instruct with vLLM:
 
 ```bash
 chmod +x local_inference/start_vllm_qwen.sh
-MODEL="Qwen/Qwen3-4B-Instruct-2507" \
-SERVED_MODEL_NAME="qwen3-4b-instruct-2507" \
-PORT=8000 \
-local_inference/start_vllm_qwen.sh
+bash local_inference/start_vllm_qwen.sh
 
 export OPENAI_API_KEY="local"
 python src/miner.py --config configs/local_qwen3_vllm.json
@@ -103,14 +100,9 @@ For more reproducible server runs, pre-download models into the ignored
 pip install huggingface-hub
 chmod +x local_inference/download_hf_model.sh
 
-MODEL_ID="Qwen/Qwen3-4B-Instruct-2507" \
-LOCAL_DIR="local_inference/models/qwen3-4b-instruct-2507" \
-local_inference/download_hf_model.sh
+bash local_inference/download_hf_model.sh
 
-MODEL="local_inference/models/qwen3-4b-instruct-2507" \
-SERVED_MODEL_NAME="qwen3-4b-instruct-2507" \
-PORT=8000 \
-local_inference/start_vllm_qwen.sh
+bash local_inference/start_vllm_qwen.sh
 ```
 
 For vLLM chat plus local HF embeddings:
@@ -226,13 +218,18 @@ AgentRewardBench local snapshot config:
 {
   "input": "data/agent-reward-bench/trajectories",
   "input_format": "agent_reward_bench",
+  "agent_reward_observation_policy": "last",
   "out_dir": "outputs/agent_reward_bench_local"
 }
 ```
 
 For this format the loader reads `cleaned/**/*.json` as trajectories, joins
 `data/annotations.csv` and benchmark metadata into each record's `metadata`, and
-ignores `judgments/` unless you explicitly point the generic loader there.
+ignores `judgments/` unless you explicitly point the generic loader there. By
+default it follows AgentRewardBench's judge prompt style: every step keeps
+URL/action/reasoning, while only the last step keeps a truncated axtree
+observation. Set `agent_reward_observation_policy` to `last_and_errors`, `all`,
+or `none` to change this tradeoff.
 
 ## Outputs
 

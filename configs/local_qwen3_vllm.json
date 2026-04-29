@@ -1,6 +1,9 @@
 {
   "input": "data/agent-reward-bench/trajectories",
   "input_format": "agent_reward_bench",
+  "max_input_records": 5,
+  "agent_reward_observation_chars": 300,
+  "agent_reward_observation_policy": "last",
   "out_dir": "outputs/local_qwen3_vllm",
   "api_key_env": "OPENAI_API_KEY",
   "base_url": "http://localhost:8000/v1",
@@ -15,6 +18,6 @@
   "cluster_threshold": 0.34,
   "min_cluster_size": 2,
   "generalization_threshold": 0.74,
-  "max_records_per_cluster": 12,
-  "max_chars_per_trace": 5000
+  "max_records_per_cluster": 2,
+  "max_chars_per_trace": 1500
 }

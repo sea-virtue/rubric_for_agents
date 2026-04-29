@@ -101,7 +101,10 @@ def cluster_text(record: Mapping[str, Any]) -> str:
     features = record.get("features", {}) if isinstance(record.get("features"), dict) else {}
     strategy = str(features.get("strategy_signature", ""))
     tools = " ".join(map(str, features.get("tool_names", []))) if isinstance(features.get("tool_names"), list) else ""
-    return f"{record.get('task', '')}\nstrategy: {strategy}\ntools: {tools}\n{record.get('trace_text', '')[:4000]}"
+    compact = record.get("compact_trace")
+    compact_text = str(compact.get("text", "")) if isinstance(compact, Mapping) else ""
+    trace_text = compact_text or str(record.get("trace_text", ""))
+    return f"{record.get('task', '')}\nstrategy: {strategy}\ntools: {tools}\n{trace_text[:4000]}"
 
 
 def top_keywords(texts: Iterable[str], limit: int = 8) -> str:
