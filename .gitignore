@@ -2,6 +2,8 @@ data/agent-reward-bench/
 RubricHub-main/
 RubricHub-main.zip
 models/
+local_inference/models/
+local_inference/hf_cache/
 outputs/
 *.log
 *.tmp

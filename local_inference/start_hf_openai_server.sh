@@ -8,6 +8,14 @@ SERVED_EMBEDDING_MODEL_NAME="${SERVED_EMBEDDING_MODEL_NAME:-}"
 DEVICE="${DEVICE:-auto}"
 HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-8001}"
+HF_HOME="${HF_HOME:-$(pwd)/local_inference/hf_cache}"
+HF_HUB_CACHE="${HF_HUB_CACHE:-${HF_HOME}/hub}"
+TRANSFORMERS_CACHE="${TRANSFORMERS_CACHE:-${HF_HOME}/transformers}"
+
+export HF_HOME
+export HF_HUB_CACHE
+export TRANSFORMERS_CACHE
+mkdir -p "${HF_HUB_CACHE}" "${TRANSFORMERS_CACHE}"
 
 args=(
   "local_inference/hf_openai_server.py"

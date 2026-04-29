@@ -4,8 +4,12 @@ set -euo pipefail
 export MODEL_ID="${MODEL_ID:-Qwen/Qwen3-4B-Instruct-2507}"
 export LOCAL_DIR="${LOCAL_DIR:-local_inference/models/qwen3-4b-instruct-2507}"
 export REVISION="${REVISION:-main}"
+export HF_HOME="${HF_HOME:-$(pwd)/local_inference/hf_cache}"
+export HF_HUB_CACHE="${HF_HUB_CACHE:-${HF_HOME}/hub}"
+export TRANSFORMERS_CACHE="${TRANSFORMERS_CACHE:-${HF_HOME}/transformers}"
 
 mkdir -p "$(dirname "${LOCAL_DIR}")"
+mkdir -p "${HF_HUB_CACHE}" "${TRANSFORMERS_CACHE}"
 
 python - <<'PY'
 import os
