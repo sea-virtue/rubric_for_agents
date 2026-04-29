@@ -5,9 +5,9 @@
   "api_key_env": "OPENAI_API_KEY",
   "base_url": "http://localhost:8000/v1",
   "rubric_models": [
-    "qwen3-8b-instruct"
+    "qwen3-4b-instruct-2507"
   ],
-  "merge_model": "qwen3-8b-instruct",
+  "merge_model": "qwen3-4b-instruct-2507",
   "embedding_model": "",
   "min_model_support": 1,
   "concurrency": 2,

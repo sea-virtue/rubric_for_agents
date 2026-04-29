@@ -87,8 +87,8 @@ For local Qwen3 Instruct with vLLM:
 
 ```bash
 chmod +x local_inference/start_vllm_qwen.sh
-MODEL="Qwen/qwen3-8b-instruct" \
-SERVED_MODEL_NAME="qwen3-8b-instruct" \
+MODEL="Qwen/Qwen3-4B-Instruct-2507" \
+SERVED_MODEL_NAME="qwen3-4b-instruct-2507" \
 PORT=8000 \
 local_inference/start_vllm_qwen.sh
 
@@ -97,18 +97,18 @@ python src/miner.py --config configs/local_qwen3_vllm.json
 ```
 
 For more reproducible server runs, pre-download models into the ignored
-`models/` directory:
+`local_inference/models/` directory:
 
 ```bash
 pip install huggingface-hub
 chmod +x local_inference/download_hf_model.sh
 
-MODEL_ID="Qwen/Qwen3-7B-Instruct" \
-LOCAL_DIR="models/qwen3-7b-instruct" \
+MODEL_ID="Qwen/Qwen3-4B-Instruct-2507" \
+LOCAL_DIR="local_inference/models/qwen3-4b-instruct-2507" \
 local_inference/download_hf_model.sh
 
-MODEL="models/qwen3-7b-instruct" \
-SERVED_MODEL_NAME="qwen3-7b-instruct" \
+MODEL="local_inference/models/qwen3-4b-instruct-2507" \
+SERVED_MODEL_NAME="qwen3-4b-instruct-2507" \
 PORT=8000 \
 local_inference/start_vllm_qwen.sh
 ```

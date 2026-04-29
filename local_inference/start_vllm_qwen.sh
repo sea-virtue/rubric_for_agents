@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MODEL="${MODEL:-Qwen/Qwen3-7B-Instruct}"
-SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-qwen3-7b-instruct}"
+MODEL="${MODEL:-Qwen/Qwen3-4B-Instruct-2507}"
+SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-qwen3-4b-instruct-2507}"
 HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-8000}"
 TENSOR_PARALLEL_SIZE="${TENSOR_PARALLEL_SIZE:-1}"

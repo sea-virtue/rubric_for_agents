@@ -35,8 +35,8 @@ cache, or pre-download it into this project's ignored `models/` directory.
 Automatic download:
 
 ```bash
-MODEL="Qwen/Qwen3-8B-Instruct" \
-SERVED_MODEL_NAME="qwen3-8b-instruct" \
+MODEL="Qwen/Qwen3-4B-Instruct-2507" \
+SERVED_MODEL_NAME="qwen3-4b-instruct-2507" \
 PORT=8000 \
 local_inference/start_vllm_qwen.sh
 ```
@@ -47,26 +47,26 @@ Pre-download to `models/`:
 pip install huggingface-hub
 chmod +x local_inference/download_hf_model.sh
 
-MODEL_ID="Qwen/Qwen3-8B-Instruct" \
-LOCAL_DIR="models/qwen3-8b-instruct" \
+MODEL_ID="Qwen/Qwen3-4B-Instruct-2507" \
+LOCAL_DIR="local_inference/models/qwen3-4b-instruct-2507" \
 local_inference/download_hf_model.sh
 ```
 
 Then run vLLM from the local path:
 
 ```bash
-MODEL="models/qwen3-8b-instruct" \
-SERVED_MODEL_NAME="qwen3-8b-instruct" \
+MODEL="local_inference/models/qwen3-4b-instruct-2507" \
+SERVED_MODEL_NAME="qwen3-4b-instruct-2507" \
 PORT=8000 \
 local_inference/start_vllm_qwen.sh
 ```
 
-Start Qwen3 8B Instruct:
+Start Qwen3 4B Instruct 2507:
 
 ```bash
 chmod +x local_inference/start_vllm_qwen.sh
-MODEL="Qwen/qwen3-8b-instruct" \
-SERVED_MODEL_NAME="qwen3-8b-instruct" \
+MODEL="Qwen/Qwen3-4B-Instruct-2507" \
+SERVED_MODEL_NAME="qwen3-4b-instruct-2507" \
 PORT=8000 \
 local_inference/start_vllm_qwen.sh
 ```
@@ -108,8 +108,8 @@ local_inference/start_hf_openai_server.sh
 Run a small direct HF chat server too:
 
 ```bash
-CHAT_MODEL="Qwen/qwen3-8b-instruct" \
-SERVED_CHAT_MODEL_NAME="qwen3-8b-instruct" \
+CHAT_MODEL="Qwen/Qwen3-4B-Instruct-2507" \
+SERVED_CHAT_MODEL_NAME="qwen3-4b-instruct-2507" \
 EMBEDDING_MODEL="" \
 PORT=8000 \
 local_inference/start_hf_openai_server.sh

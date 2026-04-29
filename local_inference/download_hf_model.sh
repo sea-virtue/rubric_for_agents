@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MODEL_ID="${MODEL_ID:-Qwen/Qwen3-8B-Instruct}"
-LOCAL_DIR="${LOCAL_DIR:-models/qwen3-8b-instruct}"
-REVISION="${REVISION:-main}"
+export MODEL_ID="${MODEL_ID:-Qwen/Qwen3-4B-Instruct-2507}"
+export LOCAL_DIR="${LOCAL_DIR:-local_inference/models/qwen3-4b-instruct-2507}"
+export REVISION="${REVISION:-main}"
 
 mkdir -p "$(dirname "${LOCAL_DIR}")"
 
