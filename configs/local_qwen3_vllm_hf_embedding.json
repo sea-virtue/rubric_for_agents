@@ -6,20 +6,21 @@
   "agent_reward_observation_policy": "last",
   "out_dir": "outputs/local_qwen3_vllm_hf_embedding",
   "api_key_env": "OPENAI_API_KEY",
-  "base_url": "http://localhost:8000/v1",
+  "base_url": "http://127.0.0.1:8000/v1",
   "embedding_api_key_env": "OPENAI_API_KEY",
-  "embedding_base_url": "http://localhost:8001/v1",
+  "embedding_base_url": "http://127.0.0.1:8001/v1",
   "rubric_models": [
     "qwen3-4b-instruct-2507"
   ],
   "merge_model": "qwen3-4b-instruct-2507",
   "embedding_model": "bge-m3",
   "min_model_support": 1,
-  "concurrency": 2,
+  "concurrency": 1,
   "cluster_algorithm": "dbscan",
   "cluster_threshold": 0.74,
   "min_cluster_size": 2,
   "generalization_threshold": 0.74,
   "max_records_per_cluster": 2,
-  "max_chars_per_trace": 1500
+  "max_chars_per_trace": 1500,
+  "llm_max_tokens": 1024
 }

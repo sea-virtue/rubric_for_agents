@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from urllib.parse import urlparse
 from typing import Any, List, Mapping, Optional, Sequence, TYPE_CHECKING
 
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
@@ -30,7 +31,27 @@ def build_client(
     resolved_base_url = base_url or os.getenv("OPENAI_BASE_URL")
     if resolved_base_url:
         kwargs["base_url"] = resolved_base_url
+        if _is_local_base_url(resolved_base_url):
+            try:
+                import httpx
+            except ImportError as exc:  # pragma: no cover
+                raise RuntimeError("Missing dependency: httpx. It is required by openai for local proxy bypass.") from exc
+            _ensure_no_proxy_for_localhost()
+            kwargs["http_client"] = httpx.AsyncClient(trust_env=False)
     return OpenAIAsyncClient(**kwargs)
+
+
+def _is_local_base_url(base_url: str) -> bool:
+    host = urlparse(base_url).hostname
+    return host in {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
+
+
+def _ensure_no_proxy_for_localhost() -> None:
+    local_hosts = ["localhost", "127.0.0.1", "0.0.0.0", "::1"]
+    for key in ("NO_PROXY", "no_proxy"):
+        existing = [part.strip() for part in os.getenv(key, "").split(",") if part.strip()]
+        merged = existing + [host for host in local_hosts if host not in existing]
+        os.environ[key] = ",".join(merged)
 
 
 def extract_json_array(text: str) -> List[Any]:
@@ -75,11 +96,13 @@ async def async_llm_call(
     model: str,
     messages: Sequence[Mapping[str, str]],
     temperature: float = 0.2,
+    max_tokens: int = 2048,
 ) -> str:
     response = await client.chat.completions.create(
         model=model,
         messages=list(messages),
         temperature=temperature,
+        max_tokens=max_tokens,
     )
     content = response.choices[0].message.content
     if not content:
@@ -92,9 +115,14 @@ async def llm_json_array(
     model: str,
     messages: Sequence[Mapping[str, str]],
     temperature: float = 0.2,
+    max_tokens: int = 2048,
 ) -> List[Any]:
-    content = await async_llm_call(client, model, messages, temperature=temperature)
-    return extract_json_array(content)
+    content = await async_llm_call(client, model, messages, temperature=temperature, max_tokens=max_tokens)
+    try:
+        return extract_json_array(content)
+    except Exception as exc:
+        excerpt = re.sub(r"\s+", " ", content).strip()[:500]
+        raise ValueError(f"{exc}; output_excerpt={excerpt}") from exc
 
 
 @retry(

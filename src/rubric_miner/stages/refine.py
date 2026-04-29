@@ -20,6 +20,7 @@ async def refine_stage(
     client: Any,
     merge_model: str,
     concurrency: int,
+    max_tokens: int,
 ) -> List[Dict[str, Any]]:
     stage_records = load_json_array(output_path)
     ok_index = good_record_index(stage_records)
@@ -40,6 +41,7 @@ async def refine_stage(
                     merge_model,
                     refine_messages(merged, success, failure),
                     temperature=0.15,
+                    max_tokens=max_tokens,
                 )
                 refined = RefinedCluster(
                     __record_id__=record_id,

@@ -20,6 +20,7 @@ async def mine_stage(
     concurrency: int,
     max_records: int,
     max_chars: int,
+    max_tokens: int,
 ) -> List[Dict[str, Any]]:
     stage_records = load_json_array(output_path)
     ok_index = good_record_index(stage_records)
@@ -34,7 +35,7 @@ async def mine_stage(
                 messages = mining_messages(group, max_records=max_records, max_chars=max_chars)
                 raw_by_model = await asyncio.gather(
                     *[
-                        llm_json_array(client, model, messages, temperature=0.35)
+                        llm_json_array(client, model, messages, temperature=0.35, max_tokens=max_tokens)
                         for model in mining_models
                     ]
                 )

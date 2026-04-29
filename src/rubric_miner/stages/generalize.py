@@ -23,6 +23,7 @@ async def generalize_stage(
     merge_model: str,
     concurrency: int,
     bucket_threshold: float,
+    max_tokens: int,
 ) -> List[Dict[str, Any]]:
     stage_records = load_json_array(output_path)
     ok_index = good_record_index(stage_records)
@@ -37,7 +38,13 @@ async def generalize_stage(
             return _single_cluster_output(bucket, merge_model)
         async with semaphore:
             try:
-                raw = await llm_json_array(client, merge_model, generalize_messages(bucket), temperature=0.1)
+                raw = await llm_json_array(
+                    client,
+                    merge_model,
+                    generalize_messages(bucket),
+                    temperature=0.1,
+                    max_tokens=max_tokens,
+                )
                 rubrics = parse_rubric_items(raw)
                 kept, support = _filter_cross_cluster_support(rubrics, bucket)
                 generalized = GeneralizedRubricSet(

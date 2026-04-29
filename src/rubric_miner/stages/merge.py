@@ -21,6 +21,7 @@ async def merge_stage(
     merge_model: str,
     concurrency: int,
     min_model_support: int,
+    max_tokens: int,
 ) -> List[Dict[str, Any]]:
     stage_records = load_json_array(output_path)
     ok_index = good_record_index(stage_records)
@@ -33,7 +34,13 @@ async def merge_stage(
             return dict(ok_index[cluster_id])
         async with semaphore:
             try:
-                raw = await llm_json_array(client, merge_model, merge_messages(mined), temperature=0.1)
+                raw = await llm_json_array(
+                    client,
+                    merge_model,
+                    merge_messages(mined),
+                    temperature=0.1,
+                    max_tokens=max_tokens,
+                )
                 rubrics_by_model = normalize_rubrics_by_model(mined)
                 kept, support = filter_consensus(
                     parse_rubric_items(raw),

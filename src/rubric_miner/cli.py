@@ -77,6 +77,7 @@ async def run_pipeline(args: argparse.Namespace) -> None:
         config.concurrency,
         config.max_records_per_cluster,
         config.max_chars_per_trace,
+        config.llm_max_tokens,
     )
     merged = await merge_stage(
         mined,
@@ -85,6 +86,7 @@ async def run_pipeline(args: argparse.Namespace) -> None:
         config.merge_model,
         config.concurrency,
         config.min_model_support,
+        config.llm_max_tokens,
     )
     generalized = await generalize_stage(
         merged,
@@ -93,8 +95,17 @@ async def run_pipeline(args: argparse.Namespace) -> None:
         config.merge_model,
         config.concurrency,
         config.generalization_threshold,
+        config.llm_max_tokens,
     )
-    refined = await refine_stage(generalized, groups, out_dir / "refined.json", client, config.merge_model, config.concurrency)
+    refined = await refine_stage(
+        generalized,
+        groups,
+        out_dir / "refined.json",
+        client,
+        config.merge_model,
+        config.concurrency,
+        config.llm_max_tokens,
+    )
     exported = export_stage(refined, out_dir / "rubrics.json")
 
     logger.info("pipeline_done", extra={"exported": len(exported), "path": str(out_dir / "rubrics.json")})
@@ -142,6 +153,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--min-model-support", type=int, default=None)
     parser.add_argument("--max-records-per-cluster", type=int, default=None)
     parser.add_argument("--max-chars-per-trace", type=int, default=None)
+    parser.add_argument("--llm-max-tokens", type=int, default=None)
     parser.add_argument("--log-file", type=Path, default=None)
     parser.add_argument("--verbose", action="store_true")
     return parser.parse_args(argv)
@@ -179,6 +191,7 @@ def apply_cli_overrides(config: object, args: argparse.Namespace) -> None:
         "min_model_support",
         "max_records_per_cluster",
         "max_chars_per_trace",
+        "llm_max_tokens",
         "log_file",
         "verbose",
         "base_url",
