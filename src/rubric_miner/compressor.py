@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Mapping, Sequence
+from typing import Any, Dict, Iterable, List, Mapping, Sequence
 
 
 UI_LINE_RE = re.compile(
@@ -41,9 +41,11 @@ def compact_trace(
         step = str(event.get("index", event.get("num", idx)))
         base_step = step.split(".", 1)[0]
         if "observation" in event:
-            pending_observations.setdefault(base_step, []).extend(
-                extract_ui_cues(str(event.get("observation", "")), max_cues_per_observation, max_cue_chars)
-            )
+            cues = extract_observation_cues(event, max_cues_per_observation, max_cue_chars)
+            if timeline and str(timeline[-1].get("step")) == base_step:
+                timeline[-1]["state_cues"] = _merge_cues(timeline[-1].get("state_cues", []), cues)
+            else:
+                pending_observations[base_step] = _merge_cues(pending_observations.get(base_step, []), cues)
             continue
 
         item = {
@@ -80,7 +82,15 @@ def compact_trace(
         "final_state": final_state,
         "evidence_policy": {
             "lossy": True,
-            "kept": ["thought", "action", "error", "url", "focused_element", "selected_ui_state_cues"],
+            "kept": [
+                "thought",
+                "action",
+                "error",
+                "url",
+                "focused_element",
+                "selected_ui_state_cues",
+                "observation_head_tail_relevant_cues",
+            ],
             "dropped": ["full_dom", "full_axtree", "bounding_boxes", "chat_history", "package_versions"],
         },
     }
@@ -118,7 +128,7 @@ def compact_trace_to_text(compact: Mapping[str, Any]) -> str:
         cues = item.get("state_cues") or []
         if cues:
             lines.append("  state_cues:")
-            for cue in cues[:8]:
+            for cue in _balanced_cues(cues, 8):
                 lines.append(f"    - {cue}")
     return "\n".join(lines)
 
@@ -143,15 +153,111 @@ def extract_ui_cues(text: str, limit: int, max_chars: int) -> List[str]:
     return cues
 
 
+def extract_observation_cues(event: Mapping[str, Any], limit: int, max_chars: int) -> List[str]:
+    """Extract balanced cues from a dataloader observation event.
+
+    AgentRewardBench observations may include structured head/task_relevant/tail
+    segments. Keep a small quota from each segment so the final page tail cannot
+    be crowded out by boilerplate navigation at the top of the axtree.
+    """
+
+    segments = event.get("observation_segments")
+    if isinstance(segments, list):
+        cues = _extract_segmented_cues(segments, limit, max_chars)
+        if cues:
+            return cues
+    return extract_ui_cues(str(event.get("observation", "")), limit, max_chars)
+
+
+def _extract_segmented_cues(segments: Sequence[Any], limit: int, max_chars: int) -> List[str]:
+    normalized_segments: List[tuple[str, List[str]]] = []
+    for segment in segments:
+        if not isinstance(segment, Mapping):
+            continue
+        section = str(segment.get("section", "observation")).strip() or "observation"
+        raw_cues = segment.get("cues", [])
+        if not isinstance(raw_cues, list):
+            continue
+        cues = [_trim(str(cue), max_chars) for cue in raw_cues if str(cue).strip()]
+        if cues:
+            normalized_segments.append((section, cues))
+    if not normalized_segments:
+        return []
+
+    per_segment = max(1, limit // len(normalized_segments))
+    selected: List[str] = []
+    for section, cues in normalized_segments:
+        for cue in cues[:per_segment]:
+            selected.append(f"{section}: {cue}")
+            if len(selected) >= limit:
+                return _dedupe_preserve_order(selected)
+
+    if len(selected) < limit:
+        for section, cues in normalized_segments:
+            for cue in cues[per_segment:]:
+                selected.append(f"{section}: {cue}")
+                if len(selected) >= limit:
+                    return _dedupe_preserve_order(selected)
+    return _dedupe_preserve_order(selected[:limit])
+
+
 def _final_state(timeline: Sequence[Mapping[str, Any]]) -> str:
     for item in reversed(timeline):
         cues = item.get("state_cues") or []
         if cues:
-            return " | ".join(map(str, cues[:4]))
+            return " | ".join(map(str, _balanced_cues(cues, 4)))
     for item in reversed(timeline):
         if item.get("action"):
             return f"last_action: {item['action']}"
     return ""
+
+
+def _merge_cues(left: Iterable[str], right: Iterable[str]) -> List[str]:
+    return _dedupe_preserve_order([*map(str, left or []), *map(str, right or [])])
+
+
+def _balanced_cues(cues: Iterable[Any], limit: int) -> List[str]:
+    clean_cues = _dedupe_preserve_order(map(str, cues or []))
+    if len(clean_cues) <= limit:
+        return clean_cues
+
+    groups: Dict[str, List[str]] = {}
+    order: List[str] = []
+    for cue in clean_cues:
+        group = cue.split(":", 1)[0] if ":" in cue else "other"
+        if group not in groups:
+            groups[group] = []
+            order.append(group)
+        groups[group].append(cue)
+
+    per_group = max(1, limit // max(1, len(order)))
+    selected: List[str] = []
+    for group in order:
+        selected.extend(groups[group][:per_group])
+        if len(selected) >= limit:
+            return selected[:limit]
+
+    if len(selected) < limit:
+        for group in order:
+            selected.extend(groups[group][per_group:])
+            if len(selected) >= limit:
+                return _dedupe_preserve_order(selected)[:limit]
+    return _dedupe_preserve_order(selected)[:limit]
+
+
+def _dedupe_preserve_order(values: Iterable[str]) -> List[str]:
+    seen = set()
+    output = []
+    for value in values:
+        clean = str(value).strip()
+        if not clean:
+            continue
+        key = clean.lower()
+        if key in seen:
+            continue
+        output.append(clean)
+        seen.add(key)
+    return output
 
 
 def _trim(text: str, limit: int) -> str:

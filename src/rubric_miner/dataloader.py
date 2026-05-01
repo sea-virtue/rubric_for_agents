@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
@@ -14,6 +15,53 @@ OUTCOME_KEYS = ("outcome", "label", "status", "result", "success", "passed", "is
 TRACE_KEYS = ("trace", "trajectory", "messages", "steps", "events", "conversation", "log")
 ID_KEYS = ("__record_id__", "record_id", "trace_id", "sample_id", "id", "case_id", "episode_id")
 STEP_KEYS = ("step", "step_index", "event_index", "turn", "turn_index", "timestep")
+OBSERVATION_KEYWORDS = {
+    "active",
+    "alert",
+    "checked",
+    "complete",
+    "current",
+    "done",
+    "error",
+    "failed",
+    "heading",
+    "invalid",
+    "label",
+    "link",
+    "list",
+    "menu",
+    "option",
+    "required",
+    "result",
+    "row",
+    "selected",
+    "success",
+    "table",
+    "textbox",
+    "value",
+}
+OBSERVATION_STOPWORDS = {
+    "about",
+    "after",
+    "again",
+    "also",
+    "and",
+    "are",
+    "for",
+    "from",
+    "into",
+    "not",
+    "now",
+    "the",
+    "this",
+    "that",
+    "then",
+    "there",
+    "with",
+    "you",
+    "your",
+}
+OBSERVATION_TOKEN_RE = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]{2,}")
 
 
 class TraceDataLoader:
@@ -221,7 +269,7 @@ class TraceDataLoader:
             "__record_id__": record_id,
             "task": str(raw.get("goal", "")).strip(),
             "outcome": self._agent_reward_outcome(summary, annotation),
-            "trace": self._agent_reward_steps(raw.get("steps", [])),
+            "trace": self._agent_reward_steps(raw.get("steps", []), task=str(raw.get("goal", ""))),
             "metadata": {
                 "dataset": "agent-reward-bench",
                 "benchmark": benchmark,
@@ -247,7 +295,7 @@ class TraceDataLoader:
             },
         }
 
-    def _agent_reward_steps(self, steps: Any) -> List[Dict[str, Any]]:
+    def _agent_reward_steps(self, steps: Any, *, task: str = "") -> List[Dict[str, Any]]:
         if not isinstance(steps, list):
             return []
         normalized = []
@@ -268,12 +316,20 @@ class TraceDataLoader:
                     "screenshot_path": step.get("screenshot_path", ""),
                 }
             )
-            observation = self._short_observation(step) if self._keep_agent_reward_observation(idx, last_step_pos, last_action_error) else ""
+            observation = (
+                self._agent_reward_observation(step, task=task)
+                if self._keep_agent_reward_observation(idx, last_step_pos, last_action_error)
+                else None
+            )
             if observation:
                 normalized.append(
                     {
                         "index": f"{step_num}.obs",
-                        "observation": observation,
+                        "observation": observation["text"],
+                        "observation_segments": observation["segments"],
+                        "observation_source": observation["source_key"],
+                        "observation_char_budget": observation["char_budget"],
+                        "observation_policy": "head_relevant_tail",
                         "url": step.get("url", ""),
                         "screenshot_path": step.get("screenshot_path", ""),
                     }
@@ -298,12 +354,186 @@ class TraceDataLoader:
             return idx == last_step_pos or bool(last_action_error)
         return idx == last_step_pos
 
-    def _short_observation(self, step: Mapping[str, Any]) -> str:
+    def _agent_reward_observation(self, step: Mapping[str, Any], *, task: str = "") -> Optional[Dict[str, Any]]:
+        budget = self._agent_reward_observation_budget()
+        if budget <= 0:
+            return None
         for key in ("axtree_pruned", "axtree"):
             value = step.get(key)
             if isinstance(value, str) and value.strip():
-                return value[: self.agent_reward_observation_chars]
-        return ""
+                return self._summarize_agent_reward_observation(
+                    value,
+                    source_key=key,
+                    step=step,
+                    task=task,
+                    char_budget=budget,
+                )
+        return None
+
+    def _agent_reward_observation_budget(self) -> int:
+        try:
+            return int(self.agent_reward_observation_chars)
+        except (TypeError, ValueError):
+            return 1200
+
+    def _summarize_agent_reward_observation(
+        self,
+        text: str,
+        *,
+        source_key: str,
+        step: Mapping[str, Any],
+        task: str,
+        char_budget: int,
+    ) -> Dict[str, Any]:
+        budget = max(1, int(char_budget))
+        lines = self._observation_lines(text)
+        if not lines:
+            lines = [re.sub(r"\s+", " ", text).strip()]
+
+        indexed = list(enumerate(lines))
+        label_budget = 80
+        line_budget = max(60, budget - label_budget)
+        head_budget = max(80, int(line_budget * 0.26))
+        tail_budget = max(120, int(line_budget * 0.34))
+        relevant_budget = max(80, line_budget - head_budget - tail_budget)
+
+        head = self._take_head_lines(indexed, head_budget)
+        tail = self._take_tail_lines(indexed, tail_budget)
+        used_indices = {idx for idx, _ in head} | {idx for idx, _ in tail}
+        relevant = self._select_relevant_observation_lines(
+            indexed,
+            keywords=self._observation_relevance_terms(task, step),
+            used_indices=used_indices,
+            char_budget=relevant_budget,
+        )
+
+        segments = [
+            self._observation_segment("head", head),
+            self._observation_segment("task_relevant", relevant),
+            self._observation_segment("tail", tail),
+        ]
+        segments = [segment for segment in segments if segment["cues"]]
+        rendered = self._render_observation_segments(segments, budget)
+        return {
+            "text": rendered,
+            "segments": segments,
+            "source_key": source_key,
+            "char_budget": budget,
+        }
+
+    def _observation_lines(self, text: str) -> List[str]:
+        lines = []
+        for raw_line in text.splitlines():
+            line = re.sub(r"\s+", " ", raw_line).strip()
+            if line:
+                lines.append(line)
+        return lines
+
+    def _take_head_lines(self, indexed_lines: Sequence[tuple[int, str]], char_budget: int) -> List[tuple[int, str]]:
+        return self._take_lines_until_budget(indexed_lines, char_budget)
+
+    def _take_tail_lines(self, indexed_lines: Sequence[tuple[int, str]], char_budget: int) -> List[tuple[int, str]]:
+        selected = self._take_lines_until_budget(reversed(indexed_lines), char_budget)
+        return list(reversed(selected))
+
+    def _take_lines_until_budget(
+        self,
+        indexed_lines: Iterable[tuple[int, str]],
+        char_budget: int,
+    ) -> List[tuple[int, str]]:
+        selected: List[tuple[int, str]] = []
+        used = 0
+        for idx, line in indexed_lines:
+            trimmed = self._trim_observation_line(line)
+            projected = used + len(trimmed) + 1
+            if selected and projected > char_budget:
+                break
+            if not selected and projected > char_budget:
+                trimmed = self._trim_observation_line(trimmed, max(30, char_budget))
+            selected.append((idx, trimmed))
+            used += len(trimmed) + 1
+            if used >= char_budget:
+                break
+        return selected
+
+    def _select_relevant_observation_lines(
+        self,
+        indexed_lines: Sequence[tuple[int, str]],
+        *,
+        keywords: set[str],
+        used_indices: set[int],
+        char_budget: int,
+    ) -> List[tuple[int, str]]:
+        scored: List[tuple[int, int, str]] = []
+        for idx, line in indexed_lines:
+            if idx in used_indices:
+                continue
+            lowered = line.lower()
+            keyword_hits = sum(1 for keyword in keywords if keyword and keyword in lowered)
+            marker_hits = sum(1 for keyword in OBSERVATION_KEYWORDS if keyword in lowered)
+            if keyword_hits or marker_hits:
+                scored.append((keyword_hits * 3 + marker_hits, idx, self._trim_observation_line(line)))
+        scored.sort(key=lambda item: (-item[0], item[1]))
+        selected = self._take_lines_until_budget(((idx, line) for _, idx, line in scored), char_budget)
+        return sorted(selected, key=lambda item: item[0])
+
+    def _observation_relevance_terms(self, task: str, step: Mapping[str, Any]) -> set[str]:
+        text = " ".join(
+            [
+                task,
+                str(step.get("action", "")),
+                str(step.get("url", "")),
+                str(step.get("focused_element", "")),
+                str(step.get("last_action_error", "")),
+            ]
+        )
+        terms = {
+            token.lower().strip("._-/")
+            for token in OBSERVATION_TOKEN_RE.findall(text)
+            if token.lower() not in OBSERVATION_STOPWORDS
+        }
+        return {term for term in terms if len(term) >= 3}
+
+    def _observation_segment(self, name: str, indexed_lines: Sequence[tuple[int, str]]) -> Dict[str, Any]:
+        return {
+            "section": name,
+            "line_indices": [idx for idx, _ in indexed_lines],
+            "cues": [line for _, line in indexed_lines],
+        }
+
+    def _render_observation_segments(self, segments: Sequence[Mapping[str, Any]], budget: int) -> str:
+        chunks: List[str] = []
+        used = 0
+        for segment in segments:
+            section = str(segment.get("section", "observation"))
+            lines = [str(line) for line in segment.get("cues", []) if str(line).strip()]
+            if not lines:
+                continue
+            header = f"[{section}]"
+            block_lines = [header]
+            for line in lines:
+                line = self._trim_observation_line(line)
+                projected = used + sum(len(item) + 1 for item in block_lines) + len(line) + 1
+                if projected > budget:
+                    remaining = budget - used - sum(len(item) + 1 for item in block_lines)
+                    if remaining > 40:
+                        block_lines.append(self._trim_observation_line(line, remaining))
+                    break
+                block_lines.append(line)
+            block = "\n".join(block_lines)
+            if used + len(block) + 1 > budget and chunks:
+                break
+            chunks.append(block)
+            used += len(block) + 1
+            if used >= budget:
+                break
+        return "\n".join(chunks)[:budget]
+
+    def _trim_observation_line(self, text: str, limit: int = 220) -> str:
+        text = re.sub(r"\s+", " ", str(text)).strip()
+        if len(text) <= limit:
+            return text
+        return text[: max(0, limit - 18)].rstrip() + " ...[truncated]"
 
     def _agent_reward_outcome(
         self,

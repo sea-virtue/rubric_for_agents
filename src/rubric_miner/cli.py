@@ -131,7 +131,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         "--agent-reward-observation-chars",
         type=int,
         default=None,
-        help="Max chars kept from AgentRewardBench axtree/axtree_pruned per observation",
+        help="Max chars kept for each AgentRewardBench head/relevant/tail axtree observation digest",
     )
     parser.add_argument(
         "--agent-reward-observation-policy",

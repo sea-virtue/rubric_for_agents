@@ -227,9 +227,12 @@ For this format the loader reads `cleaned/**/*.json` as trajectories, joins
 `data/annotations.csv` and benchmark metadata into each record's `metadata`, and
 ignores `judgments/` unless you explicitly point the generic loader there. By
 default it follows AgentRewardBench's judge prompt style: every step keeps
-URL/action/reasoning, while only the last step keeps a truncated axtree
-observation. Set `agent_reward_observation_policy` to `last_and_errors`, `all`,
-or `none` to change this tradeoff.
+URL/action/reasoning, while only the last step keeps an axtree observation
+digest. The digest is not a raw prefix: it balances the axtree head, task/action
+relevant lines, and the tail so final-page evidence is not lost behind global
+navigation boilerplate. Set `agent_reward_observation_policy` to
+`last_and_errors`, `all`, or `none` to change this tradeoff, and adjust
+`agent_reward_observation_chars` to tune the per-observation digest budget.
 
 ## Outputs
 
