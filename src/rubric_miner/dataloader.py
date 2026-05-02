@@ -8,6 +8,9 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
 
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+
+from .logging_utils import console
 from .trace import stable_record_id
 
 
@@ -186,32 +189,36 @@ class TraceDataLoader:
             file_paths = file_paths[: self.max_records]
 
         records: List[Dict[str, Any]] = []
-        for file_path in file_paths:
-            try:
-                with file_path.open("r", encoding="utf-8") as handle:
-                    raw = json.load(handle)
-                if not isinstance(raw, dict) or "steps" not in raw:
-                    continue
-                records.append(
-                    self._normalize_agent_reward_record(
-                        raw,
-                        file_path=file_path,
-                        root=root,
-                        annotations=annotations,
-                        benchmark_meta=benchmark_meta,
+        with _loader_progress() as progress:
+            task = progress.add_task("Loading AgentRewardBench traces", total=len(file_paths))
+            for file_path in file_paths:
+                try:
+                    with file_path.open("r", encoding="utf-8") as handle:
+                        raw = json.load(handle)
+                    if not isinstance(raw, dict) or "steps" not in raw:
+                        progress.advance(task)
+                        continue
+                    records.append(
+                        self._normalize_agent_reward_record(
+                            raw,
+                            file_path=file_path,
+                            root=root,
+                            annotations=annotations,
+                            benchmark_meta=benchmark_meta,
+                        )
                     )
-                )
-            except Exception as exc:
-                records.append(
-                    {
-                        "__record_id__": str(file_path.relative_to(root)).replace("\\", "/"),
-                        "task": "",
-                        "outcome": "unknown",
-                        "trace": [],
-                        "metadata": {"source_path": str(file_path), "load_error": str(exc)},
-                        "raw_input": {},
-                    }
-                )
+                except Exception as exc:
+                    records.append(
+                        {
+                            "__record_id__": str(file_path.relative_to(root)).replace("\\", "/"),
+                            "task": "",
+                            "outcome": "unknown",
+                            "trace": [],
+                            "metadata": {"source_path": str(file_path), "load_error": str(exc)},
+                            "raw_input": {},
+                        }
+                    )
+                progress.advance(task)
         return records
 
     def _balanced_agent_reward_paths(
@@ -899,3 +906,14 @@ class TraceDataLoader:
                 except ValueError:
                     return 0, str(value)
         return 0, ""
+
+
+def _loader_progress() -> Progress:
+    return Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("{task.completed}/{task.total}"),
+        TimeElapsedColumn(),
+        console=console,
+    )
