@@ -16,10 +16,13 @@
   "min_model_support": 1,
   "concurrency": 1,
   "cluster_algorithm": "connected",
+  "cluster_partition_metadata_keys": [
+    "benchmark"
+  ],
   "cluster_threshold": 0.48,
   "min_cluster_size": 2,
   "generalization_threshold": 0.74,
-  "max_records_per_cluster": 3,
-  "max_chars_per_trace": 2500,
+  "max_records_per_cluster": 4,
+  "max_chars_per_trace": 3500,
   "llm_max_tokens": 1024
 }

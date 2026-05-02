@@ -68,6 +68,7 @@ async def run_pipeline(args: argparse.Namespace) -> None:
         embedding_model=config.embedding_model or None,
         min_cluster_size=config.min_cluster_size,
         algorithm=config.cluster_algorithm,
+        partition_metadata_keys=config.cluster_partition_metadata_keys,
     )
     groups = build_groups(parsed, clusters)
 
@@ -156,6 +157,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--concurrency", type=int, default=None)
     parser.add_argument("--cluster-threshold", type=float, default=None)
     parser.add_argument("--cluster-algorithm", choices=["dbscan", "connected"], default=None)
+    parser.add_argument("--cluster-partition-metadata-keys", default=None, help="Comma-separated metadata keys that cannot cross cluster boundaries")
     parser.add_argument("--embedding-model", default=None, help="Overrides TRACE_EMBEDDING_MODEL")
     parser.add_argument("--min-cluster-size", type=int, default=None)
     parser.add_argument("--generalization-threshold", type=float, default=None)
@@ -213,6 +215,10 @@ def apply_cli_overrides(config: object, args: argparse.Namespace) -> None:
             setattr(config, key, value)
     if args.rubric_models:
         config.rubric_models = [model.strip() for model in args.rubric_models.split(",") if model.strip()]
+    if args.cluster_partition_metadata_keys:
+        config.cluster_partition_metadata_keys = [
+            key.strip() for key in args.cluster_partition_metadata_keys.split(",") if key.strip()
+        ]
     if args.field_map:
         config.field_map = parse_field_map(args.field_map)
     if not config.input:

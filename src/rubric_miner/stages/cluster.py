@@ -21,6 +21,7 @@ async def cluster_stage(
     embedding_model: Optional[str] = None,
     min_cluster_size: int = 2,
     algorithm: str = "dbscan",
+    partition_metadata_keys: Optional[Sequence[str]] = None,
 ) -> List[Dict[str, Any]]:
     parsed_by_id = {
         str(record.get("__record_id__")): record
@@ -33,6 +34,7 @@ async def cluster_stage(
         if str(record.get("__record_id__")) in parsed_by_id
     ]
     ok_index = good_record_index(stage_records)
+    partition_metadata_keys = list(partition_metadata_keys or [])
     assigned = _existing_assignments(stage_records, parsed_by_id)
     pending_ids = [record_id for record_id in parsed_by_id if record_id not in ok_index]
 
@@ -57,8 +59,10 @@ async def cluster_stage(
             if record_id in ok_index:
                 progress.advance(task)
                 continue
-            output = _assign_cluster(record_id, parsed, parsed_by_id, assigned, threshold)
+            partition_assigned = _assigned_in_partition(assigned, parsed_by_id, parsed, partition_metadata_keys)
+            output = _assign_cluster(record_id, parsed, parsed_by_id, partition_assigned, threshold)
             upsert(stage_records, output)
+            assigned[str(output.get("cluster_id", ""))].append(record_id)
             atomic_write_json_array(output_path, stage_records)
             progress.advance(task)
     atomic_write_json_array(output_path, stage_records)
@@ -266,6 +270,32 @@ def _existing_assignments(
     return assigned
 
 
+def _assigned_in_partition(
+    assigned: Mapping[str, Sequence[str]],
+    parsed_by_id: Mapping[str, Mapping[str, Any]],
+    parsed: Mapping[str, Any],
+    partition_metadata_keys: Sequence[str],
+) -> Dict[str, List[str]]:
+    if not partition_metadata_keys:
+        return {cluster_id: list(member_ids) for cluster_id, member_ids in assigned.items()}
+    key = _partition_key(parsed, partition_metadata_keys)
+    filtered: Dict[str, List[str]] = {}
+    for cluster_id, member_ids in assigned.items():
+        kept = [
+            member_id
+            for member_id in member_ids
+            if member_id in parsed_by_id and _partition_key(parsed_by_id[member_id], partition_metadata_keys) == key
+        ]
+        if kept:
+            filtered[cluster_id] = kept
+    return filtered
+
+
+def _partition_key(record: Mapping[str, Any], keys: Sequence[str]) -> tuple[str, ...]:
+    metadata = record.get("metadata", {}) if isinstance(record.get("metadata"), Mapping) else {}
+    return tuple(str(metadata.get(key, "")) for key in keys)
+
+
 def _assign_cluster(
     record_id: str,
     parsed: Mapping[str, Any],
@@ -280,8 +310,6 @@ def _assign_cluster(
             best_cluster = make_cluster_id(record_id)
             assigned[best_cluster] = []
             best_score = 1.0
-        assigned[best_cluster].append(record_id)
-
         cluster = ClusterAssignment(
             __record_id__=record_id,
             cluster_id=best_cluster,

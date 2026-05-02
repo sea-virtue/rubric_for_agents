@@ -36,6 +36,7 @@ class MinerConfig(CompatModel):
     concurrency: int = 4
     cluster_threshold: float = 0.28
     cluster_algorithm: str = "dbscan"
+    cluster_partition_metadata_keys: List[str] = Field(default_factory=list)
     min_cluster_size: int = 2
     generalization_threshold: float = 0.74
     min_model_support: int = 2
