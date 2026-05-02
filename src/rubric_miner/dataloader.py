@@ -174,14 +174,19 @@ class TraceDataLoader:
         annotations = self._load_agent_reward_annotations(root / "data" / "annotations.csv")
         benchmark_meta = self._load_agent_reward_task_metadata(root / "data")
 
+        file_paths = sorted(cleaned_root.rglob("*.json"))
+        if self.agent_reward_sample_per_bucket is not None:
+            file_paths = self._balanced_agent_reward_paths(
+                file_paths,
+                root=root,
+                cleaned_root=cleaned_root,
+                annotations=annotations,
+            )
+        elif self.max_records is not None:
+            file_paths = file_paths[: self.max_records]
+
         records: List[Dict[str, Any]] = []
-        for file_path in sorted(cleaned_root.rglob("*.json")):
-            if (
-                self.max_records is not None
-                and self.agent_reward_sample_per_bucket is None
-                and len(records) >= self.max_records
-            ):
-                break
+        for file_path in file_paths:
             try:
                 with file_path.open("r", encoding="utf-8") as handle:
                     raw = json.load(handle)
@@ -207,35 +212,52 @@ class TraceDataLoader:
                         "raw_input": {},
                     }
                 )
-        if self.agent_reward_sample_per_bucket is not None:
-            records = self._balanced_agent_reward_sample(records)
-        elif self.max_records is not None:
-            records = records[: self.max_records]
         return records
 
-    def _balanced_agent_reward_sample(self, records: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _balanced_agent_reward_paths(
+        self,
+        file_paths: Sequence[Path],
+        *,
+        root: Path,
+        cleaned_root: Path,
+        annotations: Mapping[tuple[str, str, str], Mapping[str, Any]],
+    ) -> List[Path]:
         limit = int(self.agent_reward_sample_per_bucket or 0)
         if limit <= 0:
-            return list(records[: self.max_records] if self.max_records is not None else records)
+            return list(file_paths[: self.max_records] if self.max_records is not None else file_paths)
 
-        buckets: Dict[tuple[str, str], List[Dict[str, Any]]] = defaultdict(list)
-        for record in records:
-            metadata = record.get("metadata", {}) if isinstance(record.get("metadata"), dict) else {}
-            benchmark = str(metadata.get("benchmark", "unknown"))
-            outcome = str(record.get("outcome", "unknown"))
-            buckets[(benchmark, outcome)].append(record)
+        buckets: Dict[tuple[str, str], List[Path]] = defaultdict(list)
+        for path in file_paths:
+            benchmark, agent, _experiment, task_id = self._agent_reward_path_fields(path, root=root, cleaned_root=cleaned_root)
+            annotation = annotations.get((benchmark, task_id, agent), {})
+            outcome = self._agent_reward_outcome({}, annotation)
+            buckets[(benchmark, outcome)].append(path)
 
         rng = random.Random(self.agent_reward_sample_seed)
-        sampled: List[Dict[str, Any]] = []
+        sampled: List[Path] = []
         for key in sorted(buckets):
             bucket = list(buckets[key])
             rng.shuffle(bucket)
             sampled.extend(bucket[:limit])
 
-        sampled.sort(key=lambda item: str(item.get("__record_id__", "")))
+        sampled.sort(key=lambda item: str(item))
         if self.max_records is not None:
             sampled = sampled[: self.max_records]
         return sampled
+
+    def _agent_reward_path_fields(self, path: Path, *, root: Path, cleaned_root: Path) -> tuple[str, str, str, str]:
+        try:
+            rel = path.relative_to(cleaned_root)
+        except ValueError:
+            rel = path.relative_to(root)
+            if rel.parts and rel.parts[0] == "cleaned":
+                rel = Path(*rel.parts[1:])
+        parts = rel.parts
+        benchmark = parts[0] if len(parts) > 0 else "unknown"
+        agent = parts[1] if len(parts) > 1 else "unknown"
+        experiment = parts[2] if len(parts) > 2 else ""
+        task_id = path.stem
+        return str(benchmark), str(agent), str(experiment), str(task_id)
 
     def _load_agent_reward_annotations(self, path: Path) -> Dict[tuple[str, str, str], Dict[str, Any]]:
         if not path.exists():
