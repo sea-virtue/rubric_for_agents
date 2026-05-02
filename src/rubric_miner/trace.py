@@ -119,6 +119,7 @@ def parse_trace_record(record: Mapping[str, Any]) -> Dict[str, Any]:
     if not task:
         lines = trace_text.splitlines()
         task = trim_text(lines[0] if lines else "", 400)
+    metadata = _record_metadata(record)
 
     parsed = TraceParsed(
         __record_id__=record_id,
@@ -132,26 +133,49 @@ def parse_trace_record(record: Mapping[str, Any]) -> Dict[str, Any]:
             "__record_id__": record_id,
             "task": task,
             "outcome": outcome,
-                "metadata": record.get("metadata", {}),
+            "metadata": metadata,
         },
-        metadata={
-            key: value
-            for key, value in record.items()
-            if key
-            not in {
-                "__record_id__",
-                "trace",
-                "trajectory",
-                "messages",
-                "steps",
-                "events",
-                "conversation",
-                "log",
-                "raw_input",
-            }
-        },
+        metadata=metadata,
     )
     return model_dump(parsed)
+
+
+def _record_metadata(record: Mapping[str, Any]) -> Dict[str, Any]:
+    metadata: Dict[str, Any] = {}
+    existing = record.get("metadata", {})
+    if isinstance(existing, Mapping):
+        metadata.update(dict(existing))
+    for key, value in record.items():
+        if key not in {
+            "__record_id__",
+            "trace",
+            "trajectory",
+            "messages",
+            "steps",
+            "events",
+            "conversation",
+            "log",
+            "raw_input",
+            "metadata",
+            "task",
+            "question",
+            "prompt",
+            "instruction",
+            "goal",
+            "user_request",
+            "query",
+            "outcome",
+            "label",
+            "status",
+            "result",
+            "success",
+            "passed",
+            "is_success",
+            "correct",
+            "score",
+        }:
+            metadata.setdefault(key, value)
+    return metadata
 
 
 def _trace_source(record: Mapping[str, Any]) -> Any:
