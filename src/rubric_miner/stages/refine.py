@@ -22,10 +22,18 @@ async def refine_stage(
     concurrency: int,
     max_tokens: int,
 ) -> List[Dict[str, Any]]:
-    stage_records = load_json_array(output_path)
-    ok_index = good_record_index(stage_records)
     semaphore = asyncio.Semaphore(concurrency)
     candidates = [record for record in merged_records if not has_error(record)]
+    current_ids = {
+        str(record.get("__record_id__", record.get("generalized_id", record.get("cluster_id"))))
+        for record in candidates
+    }
+    stage_records = [
+        record
+        for record in load_json_array(output_path)
+        if str(record.get("__record_id__")) in current_ids
+    ]
+    ok_index = good_record_index(stage_records)
 
     async def process_record(merged: Mapping[str, Any]) -> Dict[str, Any]:
         record_id = str(merged.get("__record_id__", merged.get("generalized_id", merged.get("cluster_id"))))

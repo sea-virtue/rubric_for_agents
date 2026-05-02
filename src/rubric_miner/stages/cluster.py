@@ -22,13 +22,17 @@ async def cluster_stage(
     min_cluster_size: int = 2,
     algorithm: str = "dbscan",
 ) -> List[Dict[str, Any]]:
-    stage_records = load_json_array(output_path)
-    ok_index = good_record_index(stage_records)
     parsed_by_id = {
         str(record.get("__record_id__")): record
         for record in parsed_records
         if record.get("__record_id__") is not None and not has_error(record)
     }
+    stage_records = [
+        record
+        for record in load_json_array(output_path)
+        if str(record.get("__record_id__")) in parsed_by_id
+    ]
+    ok_index = good_record_index(stage_records)
     assigned = _existing_assignments(stage_records, parsed_by_id)
     pending_ids = [record_id for record_id in parsed_by_id if record_id not in ok_index]
 
@@ -57,6 +61,7 @@ async def cluster_stage(
             upsert(stage_records, output)
             atomic_write_json_array(output_path, stage_records)
             progress.advance(task)
+    atomic_write_json_array(output_path, stage_records)
     return stage_records
 
 

@@ -23,15 +23,23 @@ async def merge_stage(
     min_model_support: int,
     max_tokens: int,
 ) -> List[Dict[str, Any]]:
-    stage_records = load_json_array(output_path)
-    ok_index = good_record_index(stage_records)
     semaphore = asyncio.Semaphore(concurrency)
     candidates = [record for record in mined_records if not has_error(record)]
+    current_ids = {str(record.get("cluster_id", record.get("__record_id__"))) for record in candidates}
+    stage_records = [
+        record
+        for record in load_json_array(output_path)
+        if str(record.get("__record_id__")) in current_ids
+    ]
+    ok_index = good_record_index(stage_records)
 
     async def process_record(mined: Mapping[str, Any]) -> Dict[str, Any]:
         cluster_id = str(mined["cluster_id"])
+        current_sources = list(mined.get("source_record_ids", []))
         if cluster_id in ok_index:
-            return dict(ok_index[cluster_id])
+            cached = dict(ok_index[cluster_id])
+            if list(cached.get("source_record_ids", [])) == current_sources:
+                return cached
         async with semaphore:
             try:
                 raw = await llm_json_array(

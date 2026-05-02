@@ -25,9 +25,14 @@ async def generalize_stage(
     bucket_threshold: float,
     max_tokens: int,
 ) -> List[Dict[str, Any]]:
-    stage_records = load_json_array(output_path)
-    ok_index = good_record_index(stage_records)
     buckets = build_generalization_buckets(merged_records, bucket_threshold)
+    current_ids = {str(bucket.get("__record_id__")) for bucket in buckets}
+    stage_records = [
+        record
+        for record in load_json_array(output_path)
+        if str(record.get("__record_id__")) in current_ids
+    ]
+    ok_index = good_record_index(stage_records)
     semaphore = asyncio.Semaphore(concurrency)
 
     async def process_bucket(bucket: Mapping[str, Any]) -> Dict[str, Any]:

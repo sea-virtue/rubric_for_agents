@@ -38,7 +38,15 @@ async def parse_stage(
         agent_reward_observation_chars=agent_reward_observation_chars,
         agent_reward_observation_policy=agent_reward_observation_policy,
     )
-    stage_records = load_json_array(output_path)
+    current_ids = {
+        str(record.get("__record_id__") or stable_record_id(record, idx))
+        for idx, record in enumerate(raw_records)
+    }
+    stage_records = [
+        record
+        for record in load_json_array(output_path)
+        if str(record.get("__record_id__")) in current_ids
+    ]
     ok_index = good_record_index(stage_records)
 
     logger.info("stage_start", extra={"stage": "trace_parse", "total": len(raw_records)})
@@ -66,4 +74,5 @@ async def parse_stage(
             upsert(stage_records, output)
             atomic_write_json_array(output_path, stage_records)
             progress.advance(task)
+    atomic_write_json_array(output_path, stage_records)
     return stage_records
