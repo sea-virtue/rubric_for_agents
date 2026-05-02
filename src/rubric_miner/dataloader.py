@@ -296,7 +296,16 @@ class TraceDataLoader:
             for row in self._read_csv_rows(path):
                 task_name = str(row.get("task_name", "") or row.get("task_id", ""))
                 if task_name:
-                    meta[task_name] = dict(row)
+                    record = dict(row)
+                    meta[task_name] = record
+                    task_id = str(row.get("task_id", "")).strip()
+                    benchmark = path.stem
+                    if task_id:
+                        meta.setdefault(task_id, record)
+                        meta.setdefault(f"{benchmark}.{task_id}", record)
+                    normalized = self._normalize_agent_reward_task_id(task_name)
+                    if normalized:
+                        meta.setdefault(normalized, record)
         splits_path = data_root / "splits.csv"
         if splits_path.exists():
             for row in self._read_csv_rows(splits_path):
@@ -322,7 +331,8 @@ class TraceDataLoader:
         record_id = f"{benchmark}/{agent}/{experiment}/{task_id}"
         summary = raw.get("summary_info", {}) if isinstance(raw.get("summary_info"), dict) else {}
         annotation = annotations.get((benchmark, task_id, agent), {})
-        task_meta = benchmark_meta.get(task_id, {})
+        task_meta = self._agent_reward_task_metadata(task_id, benchmark_meta)
+        task_family = self._agent_reward_task_family(benchmark, task_id, task_meta)
 
         return {
             "__record_id__": record_id,
@@ -336,6 +346,7 @@ class TraceDataLoader:
                 "model": model,
                 "experiment": experiment,
                 "task_id": task_id,
+                "task_family": task_family,
                 "seed": raw.get("seed"),
                 "valid": raw.get("valid"),
                 "summary_info": summary,
@@ -353,6 +364,112 @@ class TraceDataLoader:
                 "summary_info": summary,
             },
         }
+
+    def _agent_reward_task_metadata(
+        self,
+        task_id: str,
+        benchmark_meta: Mapping[str, Mapping[str, Any]],
+    ) -> Mapping[str, Any]:
+        candidates = [
+            task_id,
+            self._normalize_agent_reward_task_id(task_id),
+        ]
+        if task_id.startswith("assistantbench.improved."):
+            candidates.append(task_id.replace("assistantbench.improved.", "assistantbench.", 1))
+        if task_id.startswith("visualwebarena.resized."):
+            candidates.append(task_id.replace("visualwebarena.resized.", "visualwebarena.", 1))
+        for candidate in candidates:
+            if candidate and candidate in benchmark_meta:
+                return benchmark_meta[candidate]
+        return {}
+
+    def _normalize_agent_reward_task_id(self, task_id: str) -> str:
+        normalized = str(task_id or "")
+        for marker in (".resized.", ".improved."):
+            if marker in normalized:
+                normalized = normalized.replace(marker, ".")
+        return normalized
+
+    def _agent_reward_task_family(
+        self,
+        benchmark: str,
+        task_id: str,
+        task_meta: Mapping[str, Any],
+    ) -> str:
+        benchmark = str(benchmark or "unknown")
+        task_id = self._normalize_agent_reward_task_id(task_id)
+        task_name = str(task_meta.get("task_name") or task_id)
+
+        if benchmark == "workarena":
+            category = str(task_meta.get("category") or "").strip()
+            name = task_name
+            if name.startswith("workarena.servicenow."):
+                name = name[len("workarena.servicenow.") :]
+            name = re.sub(r"-l\d+$", "", name)
+            action = self._workarena_action_family(name)
+            if category and action:
+                return f"workarena:{category}:{action}"
+            if category:
+                return f"workarena:{category}"
+            return f"workarena:{action or name}"
+
+        if benchmark in {"webarena", "visualwebarena"}:
+            sites = self._compact_meta_value(task_meta.get("sites"))
+            eval_types = self._compact_meta_value(task_meta.get("eval_types"))
+            if sites or eval_types:
+                return f"{benchmark}:{sites or 'unknown_site'}:{eval_types or 'unknown_eval'}"
+            prefix = re.sub(r"\.\d+$", "", task_id)
+            return prefix or benchmark
+
+        if benchmark == "assistantbench":
+            difficulty = self._compact_meta_value(task_meta.get("difficulty"))
+            time_dependency = self._compact_meta_value(task_meta.get("time_dependency"))
+            split = self._compact_meta_value(task_meta.get("browsergym_split"))
+            parts = [benchmark]
+            if split:
+                parts.append(split)
+            if difficulty:
+                parts.append(difficulty)
+            if time_dependency:
+                parts.append(time_dependency)
+            if len(parts) > 1:
+                return ":".join(parts)
+            return re.sub(r"\.\d+$", "", task_id) or benchmark
+
+        return re.sub(r"\.\d+$", "", task_id) or benchmark
+
+    def _workarena_action_family(self, name: str) -> str:
+        if not name:
+            return ""
+        patterns = [
+            "multi-chart",
+            "dashboard-retrieve",
+            "filter",
+            "sort",
+            "navigate-and-create",
+            "navigate-and-order",
+            "navigate-and-filter",
+            "navigate-and-sort",
+            "infeasible-navigate-and-create",
+            "infeasible-navigate-and-order",
+            "infeasible-navigate-and-filter",
+            "infeasible-navigate-and-sort",
+            "date-based",
+            "off-board",
+            "on-board",
+            "get-warranty",
+            "work-assignment",
+            "priority-assignment",
+        ]
+        for pattern in patterns:
+            if name.startswith(pattern):
+                return pattern
+        return "-".join(name.split("-")[:3])
+
+    def _compact_meta_value(self, value: Any) -> str:
+        text = str(value or "").strip().lower()
+        text = re.sub(r"[^a-z0-9]+", "_", text).strip("_")
+        return text[:80]
 
     def _agent_reward_steps(self, steps: Any, *, task: str = "") -> List[Dict[str, Any]]:
         if not isinstance(steps, list):

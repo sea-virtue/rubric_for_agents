@@ -16,7 +16,9 @@
   "cluster_algorithm": "connected",
   "cluster_partition_metadata_keys": [
     "benchmark",
-    "agent"
+    "agent",
+    "experiment",
+    "task_family"
   ],
   "cluster_threshold": 0.58,
   "min_cluster_size": 2,

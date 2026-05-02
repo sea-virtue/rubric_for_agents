@@ -17,7 +17,8 @@
   "concurrency": 1,
   "cluster_algorithm": "connected",
   "cluster_partition_metadata_keys": [
-    "benchmark"
+    "benchmark",
+    "task_family"
   ],
   "cluster_threshold": 0.48,
   "min_cluster_size": 2,

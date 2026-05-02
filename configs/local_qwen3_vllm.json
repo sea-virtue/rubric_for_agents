@@ -15,6 +15,10 @@
   "min_model_support": 1,
   "concurrency": 1,
   "cluster_algorithm": "connected",
+  "cluster_partition_metadata_keys": [
+    "benchmark",
+    "task_family"
+  ],
   "cluster_threshold": 0.34,
   "min_cluster_size": 2,
   "generalization_threshold": 0.74,
