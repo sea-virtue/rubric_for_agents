@@ -67,6 +67,8 @@ def read_input_records(
     max_records: Optional[int] = None,
     agent_reward_observation_chars: int = 1200,
     agent_reward_observation_policy: str = "last",
+    agent_reward_sample_per_bucket: Optional[int] = None,
+    agent_reward_sample_seed: int = 13,
 ) -> List[Dict[str, Any]]:
     loader = TraceDataLoader(
         input_format=input_format,
@@ -75,5 +77,7 @@ def read_input_records(
         max_records=max_records,
         agent_reward_observation_chars=agent_reward_observation_chars,
         agent_reward_observation_policy=agent_reward_observation_policy,
+        agent_reward_sample_per_bucket=agent_reward_sample_per_bucket,
+        agent_reward_sample_seed=agent_reward_sample_seed,
     )
     return loader.load(path)

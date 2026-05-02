@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import random
 import re
 from collections import defaultdict
 from pathlib import Path
@@ -86,6 +87,8 @@ class TraceDataLoader:
         max_records: Optional[int] = None,
         agent_reward_observation_chars: int = 1200,
         agent_reward_observation_policy: str = "last",
+        agent_reward_sample_per_bucket: Optional[int] = None,
+        agent_reward_sample_seed: int = 13,
     ) -> None:
         self.input_format = input_format
         self.field_map = dict(field_map or {})
@@ -93,6 +96,8 @@ class TraceDataLoader:
         self.max_records = max_records
         self.agent_reward_observation_chars = agent_reward_observation_chars
         self.agent_reward_observation_policy = agent_reward_observation_policy
+        self.agent_reward_sample_per_bucket = agent_reward_sample_per_bucket
+        self.agent_reward_sample_seed = agent_reward_sample_seed
 
     def load(self, path: Path) -> List[Dict[str, Any]]:
         if not path.exists():
@@ -171,7 +176,11 @@ class TraceDataLoader:
 
         records: List[Dict[str, Any]] = []
         for file_path in sorted(cleaned_root.rglob("*.json")):
-            if self.max_records is not None and len(records) >= self.max_records:
+            if (
+                self.max_records is not None
+                and self.agent_reward_sample_per_bucket is None
+                and len(records) >= self.max_records
+            ):
                 break
             try:
                 with file_path.open("r", encoding="utf-8") as handle:
@@ -198,7 +207,35 @@ class TraceDataLoader:
                         "raw_input": {},
                     }
                 )
+        if self.agent_reward_sample_per_bucket is not None:
+            records = self._balanced_agent_reward_sample(records)
+        elif self.max_records is not None:
+            records = records[: self.max_records]
         return records
+
+    def _balanced_agent_reward_sample(self, records: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        limit = int(self.agent_reward_sample_per_bucket or 0)
+        if limit <= 0:
+            return list(records[: self.max_records] if self.max_records is not None else records)
+
+        buckets: Dict[tuple[str, str], List[Dict[str, Any]]] = defaultdict(list)
+        for record in records:
+            metadata = record.get("metadata", {}) if isinstance(record.get("metadata"), dict) else {}
+            benchmark = str(metadata.get("benchmark", "unknown"))
+            outcome = str(record.get("outcome", "unknown"))
+            buckets[(benchmark, outcome)].append(record)
+
+        rng = random.Random(self.agent_reward_sample_seed)
+        sampled: List[Dict[str, Any]] = []
+        for key in sorted(buckets):
+            bucket = list(buckets[key])
+            rng.shuffle(bucket)
+            sampled.extend(bucket[:limit])
+
+        sampled.sort(key=lambda item: str(item.get("__record_id__", "")))
+        if self.max_records is not None:
+            sampled = sampled[: self.max_records]
+        return sampled
 
     def _load_agent_reward_annotations(self, path: Path) -> Dict[tuple[str, str, str], Dict[str, Any]]:
         if not path.exists():
