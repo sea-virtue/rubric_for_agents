@@ -125,7 +125,7 @@ def parse_trace_record(record: Mapping[str, Any]) -> Dict[str, Any]:
         __record_id__=record_id,
         task=task,
         outcome=outcome,
-        trace_text=trim_text(trace_text, 20000),
+        trace_text=trim_text(trace_text, 100000),
         compact_trace=compact_for_storage,
         structured_sequence=structured_sequence,
         features=features,
@@ -207,7 +207,7 @@ def segment_trace(trace_source: Any) -> List[Dict[str, Any]]:
                 "type": event_type,
                 "role": role,
                 "tool_name": tool_name,
-                "summary": trim_text(text, 260),
+                "summary": trim_text(text, 1000),
             }
         )
     return events
@@ -217,7 +217,7 @@ def extract_trace_features(events: Sequence[Mapping[str, Any]], trace_text: str)
     type_counts = Counter(str(event.get("type", "Action")) for event in events)
     tools = [str(event.get("tool_name", "")) for event in events if event.get("tool_name")]
     action_sequence = [str(event.get("type", "Action")) for event in events]
-    strategy_signature = " -> ".join(action_sequence[:40])
+    strategy_signature = " -> ".join(action_sequence[:120])
     return {
         "num_events": len(events),
         "num_actions": int(type_counts.get("Action", 0)),

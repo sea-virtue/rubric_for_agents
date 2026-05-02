@@ -23,7 +23,8 @@
   "cluster_threshold": 0.48,
   "min_cluster_size": 2,
   "generalization_threshold": 0.74,
-  "max_records_per_cluster": 5,
-  "max_chars_per_trace": 8000,
+  "max_records_per_cluster": 6,
+  "max_chars_per_trace": 9000,
+  "mining_prompt_token_budget": 22000,
   "llm_max_tokens": 4096
 }

@@ -80,6 +80,7 @@ async def run_pipeline(args: argparse.Namespace) -> None:
         config.concurrency,
         config.max_records_per_cluster,
         config.max_chars_per_trace,
+        config.mining_prompt_token_budget,
         config.llm_max_tokens,
     )
     merged = await merge_stage(
@@ -164,6 +165,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--min-model-support", type=int, default=None)
     parser.add_argument("--max-records-per-cluster", type=int, default=None)
     parser.add_argument("--max-chars-per-trace", type=int, default=None)
+    parser.add_argument("--mining-prompt-token-budget", type=int, default=None)
     parser.add_argument("--llm-max-tokens", type=int, default=None)
     parser.add_argument("--log-file", type=Path, default=None)
     parser.add_argument("--verbose", action="store_true")
@@ -204,6 +206,7 @@ def apply_cli_overrides(config: object, args: argparse.Namespace) -> None:
         "min_model_support",
         "max_records_per_cluster",
         "max_chars_per_trace",
+        "mining_prompt_token_budget",
         "llm_max_tokens",
         "log_file",
         "verbose",

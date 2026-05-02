@@ -42,6 +42,7 @@ class MinerConfig(CompatModel):
     min_model_support: int = 2
     max_records_per_cluster: int = 8
     max_chars_per_trace: int = 6000
+    mining_prompt_token_budget: int = 26000
     llm_max_tokens: int = 2048
 
 

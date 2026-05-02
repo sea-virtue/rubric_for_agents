@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 from collections import defaultdict
 from pathlib import Path
@@ -88,7 +89,7 @@ async def _embedding_cluster_stage(
             embeddings[record_id] = await async_embedding_call(
                 client,
                 embedding_model,
-                cluster_text(parsed_by_id[record_id])[:8000],
+                cluster_text(parsed_by_id[record_id])[:20000],
             )
             progress.advance(task)
 
@@ -330,7 +331,7 @@ def _best_cluster(
     best_cluster = ""
     best_score = 0.0
     for cluster_id, member_ids in assigned.items():
-        rep_text = "\n".join(cluster_text(parsed_by_id[mid]) for mid in member_ids[:8])
+        rep_text = "\n".join(cluster_text(parsed_by_id[mid]) for mid in member_ids[:24])
         score = cosine_counts(text_counter, token_counter(rep_text))
         if score > best_score:
             best_cluster, best_score = cluster_id, score
@@ -339,4 +340,6 @@ def _best_cluster(
 
 def make_cluster_id(record_id: str) -> str:
     clean = re.sub(r"[^a-zA-Z0-9_.-]+", "_", record_id).strip("_")
-    return f"cluster_{clean[:80] or record_id[:10]}"
+    digest = hashlib.sha1(record_id.encode("utf-8")).hexdigest()[:10]
+    prefix = clean[:68].strip("_") or "record"
+    return f"cluster_{prefix}_{digest}"

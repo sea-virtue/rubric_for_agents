@@ -15,11 +15,11 @@ def compact_trace(
     task: str,
     outcome: str,
     trace_source: Any,
-    max_steps: int = 80,
-    max_thought_chars: int = 280,
-    max_action_chars: int = 320,
-    max_cues_per_observation: int = 12,
-    max_cue_chars: int = 180,
+    max_steps: int = 160,
+    max_thought_chars: int = 900,
+    max_action_chars: int = 1200,
+    max_cues_per_observation: int = 24,
+    max_cue_chars: int = 320,
 ) -> Dict[str, Any]:
     """Compress a raw trajectory into a compact, evidence-preserving form.
 
@@ -52,8 +52,8 @@ def compact_trace(
             "step": base_step,
             "thought": _trim(str(event.get("thought", event.get("reasoning", ""))), max_thought_chars),
             "action": _trim(str(event.get("action", "")), max_action_chars),
-            "url": _trim(str(event.get("url", "")), 220),
-            "focused_element": _trim(str(event.get("focused_element", "")), 80),
+            "url": _trim(str(event.get("url", "")), 500),
+            "focused_element": _trim(str(event.get("focused_element", "")), 240),
             "state_cues": pending_observations.pop(base_step, []),
         }
         error = str(event.get("error", event.get("last_action_error", ""))).strip()
@@ -76,7 +76,7 @@ def compact_trace(
         "task": task,
         "outcome": outcome,
         "step_count": len(timeline),
-        "action_signature": action_signature[:40],
+        "action_signature": action_signature[:120],
         "timeline": timeline,
         "error_recoveries": error_recoveries,
         "final_state": final_state,
@@ -108,7 +108,7 @@ def compact_trace_to_text(compact: Mapping[str, Any]) -> str:
         lines.append(f"final_state: {compact['final_state']}")
     if compact.get("error_recoveries"):
         lines.append("error_recoveries:")
-        for item in compact["error_recoveries"][:8]:
+        for item in compact["error_recoveries"][:24]:
             lines.append(f"- step {item.get('step')}: {item.get('error')} | action: {item.get('action')}")
 
     lines.append("timeline:")
@@ -128,7 +128,7 @@ def compact_trace_to_text(compact: Mapping[str, Any]) -> str:
         cues = item.get("state_cues") or []
         if cues:
             lines.append("  state_cues:")
-            for cue in _balanced_cues(cues, 8):
+            for cue in _balanced_cues(cues, 16):
                 lines.append(f"    - {cue}")
     return "\n".join(lines)
 

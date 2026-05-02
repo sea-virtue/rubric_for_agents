@@ -121,8 +121,8 @@ def refine_messages(
                 f"JSON item schema example:\n{json.dumps(schema, ensure_ascii=False)}\n\n"
                 f"cluster_id: {merged.get('cluster_id')}\n"
                 f"rubrics:\n{json.dumps(merged.get('rubrics', []), ensure_ascii=False, indent=2)}\n\n"
-                f"SUCCESS_TRACE:\n{trace_snippets([success], 1, 7000)}\n\n"
-                f"FAILURE_TRACE:\n{trace_snippets([failure], 1, 7000)}"
+                f"SUCCESS_TRACE:\n{trace_snippets([success], 1, 14000)}\n\n"
+                f"FAILURE_TRACE:\n{trace_snippets([failure], 1, 14000)}"
             ),
         },
     ]
