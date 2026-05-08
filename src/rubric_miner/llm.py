@@ -141,3 +141,24 @@ async def async_embedding_call(
     if not embedding:
         raise ValueError(f"empty embedding from model {model}")
     return list(embedding)
+
+
+@retry(
+    wait=wait_exponential(multiplier=1, min=2, max=60),
+    stop=stop_after_attempt(5),
+    retry=retry_if_exception_type(Exception),
+    reraise=True,
+)
+async def async_embedding_batch_call(
+    client: AsyncOpenAI,
+    model: str,
+    texts: Sequence[str],
+) -> List[List[float]]:
+    response = await client.embeddings.create(model=model, input=list(texts))
+    data = sorted(response.data, key=lambda item: item.index)
+    embeddings = [list(item.embedding) for item in data]
+    if len(embeddings) != len(texts):
+        raise ValueError(f"embedding count mismatch from model {model}: {len(embeddings)} != {len(texts)}")
+    if any(not embedding for embedding in embeddings):
+        raise ValueError(f"empty embedding from model {model}")
+    return embeddings

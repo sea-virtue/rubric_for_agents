@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from ..io import atomic_write_json_array, good_record_index, load_json_array, upsert
-from ..llm import async_embedding_call
+from ..llm import async_embedding_batch_call
 from ..logging_utils import logger
 from ..schemas import ClusterAssignment, has_error, model_dump
 from ..text import cluster_text, cosine_counts, cosine_vectors, sequence_similarity, token_counter, top_keywords
@@ -20,6 +20,9 @@ async def cluster_stage(
     threshold: float,
     client: Any = None,
     embedding_model: Optional[str] = None,
+    embedding_instruction: str = "",
+    embedding_max_chars: int = 20000,
+    embedding_batch_size: int = 16,
     min_cluster_size: int = 2,
     algorithm: str = "dbscan",
     partition_metadata_keys: Optional[Sequence[str]] = None,
@@ -48,9 +51,13 @@ async def cluster_stage(
             output_path,
             client,
             embedding_model,
+            embedding_instruction,
+            embedding_max_chars,
+            embedding_batch_size,
             threshold,
             min_cluster_size,
             algorithm,
+            partition_metadata_keys,
         )
         return stage_records
 
@@ -77,33 +84,66 @@ async def _embedding_cluster_stage(
     output_path: Path,
     client: Any,
     embedding_model: str,
+    embedding_instruction: str,
+    embedding_max_chars: int,
+    embedding_batch_size: int,
     threshold: float,
     min_cluster_size: int,
     algorithm: str,
+    partition_metadata_keys: Sequence[str],
 ) -> List[Dict[str, Any]]:
     ids = list(parsed_by_id)
     embeddings: Dict[str, List[float]] = {}
     with progress_bar() as progress:
         task = progress.add_task("Embedding traces", total=len(ids))
-        for record_id in ids:
-            embeddings[record_id] = await async_embedding_call(
+        batch_size = max(1, embedding_batch_size)
+        for start in range(0, len(ids), batch_size):
+            batch_ids = ids[start : start + batch_size]
+            batch_texts = [
+                _embedding_text(parsed_by_id[record_id], embedding_instruction, embedding_max_chars)
+                for record_id in batch_ids
+            ]
+            batch_embeddings = await async_embedding_batch_call(
                 client,
                 embedding_model,
-                cluster_text(parsed_by_id[record_id])[:20000],
+                batch_texts,
             )
-            progress.advance(task)
+            for record_id, embedding in zip(batch_ids, batch_embeddings):
+                embeddings[record_id] = embedding
+            progress.advance(task, len(batch_ids))
 
-    labels = _cluster_labels(ids, parsed_by_id, embeddings, threshold, min_cluster_size, algorithm)
-    grouped: Dict[int, List[str]] = defaultdict(list)
-    for record_id, label in zip(ids, labels):
-        grouped[label].append(record_id)
+    label_by_id: Dict[str, int] = {}
+    cluster_members_by_id: Dict[str, List[str]] = {}
+    cluster_id_by_record: Dict[str, str] = {}
+
+    partitions: Dict[tuple[str, ...], List[str]] = defaultdict(list)
+    for record_id in ids:
+        partitions[_partition_key(parsed_by_id[record_id], partition_metadata_keys)].append(record_id)
+
+    for partition_key, partition_ids in partitions.items():
+        labels = _cluster_labels(partition_ids, parsed_by_id, embeddings, threshold, min_cluster_size, algorithm)
+        grouped: Dict[int, List[str]] = defaultdict(list)
+        for record_id, label in zip(partition_ids, labels):
+            label_by_id[record_id] = label
+            grouped[label].append(record_id)
+
+        partition_digest = _partition_digest(partition_key)
+        for label, member_ids in grouped.items():
+            if label < 0:
+                for member_id in member_ids:
+                    cluster_id_by_record[member_id] = make_cluster_id(member_id)
+                    cluster_members_by_id[member_id] = [member_id]
+                continue
+            cluster_id = f"cluster_{partition_digest}_{label}"
+            for member_id in member_ids:
+                cluster_id_by_record[member_id] = cluster_id
+                cluster_members_by_id[member_id] = list(member_ids)
 
     with progress_bar() as progress:
         task = progress.add_task("Assigning embedding clusters", total=len(pending_ids))
         for record_id in pending_ids:
-            label = labels[ids.index(record_id)]
-            cluster_members = grouped[label]
-            cluster_id = f"cluster_{label}" if label >= 0 else make_cluster_id(record_id)
+            cluster_members = cluster_members_by_id.get(record_id, [record_id])
+            cluster_id = cluster_id_by_record.get(record_id, make_cluster_id(record_id))
             cluster = ClusterAssignment(
                 __record_id__=record_id,
                 cluster_id=cluster_id,
@@ -113,7 +153,11 @@ async def _embedding_cluster_stage(
             output = model_dump(cluster)
             output["cluster_algorithm"] = algorithm
             output["embedding_model"] = embedding_model
+            output["embedding_max_chars"] = embedding_max_chars
+            output["embedding_batch_size"] = embedding_batch_size
             output["strategy_similarity_weight"] = 0.35
+            output["partition_metadata_keys"] = list(partition_metadata_keys)
+            output["embedding_cluster_label"] = label_by_id.get(record_id)
             upsert(stage_records, output)
             atomic_write_json_array(output_path, stage_records)
             progress.advance(task)
@@ -225,6 +269,13 @@ def _tool_sequence(record: Mapping[str, Any]) -> List[str]:
     if isinstance(features, dict) and isinstance(features.get("tool_names"), list):
         return [str(tool) for tool in features["tool_names"]]
     return []
+
+
+def _embedding_text(record: Mapping[str, Any], instruction: str, max_chars: int) -> str:
+    text = cluster_text(record)[: max(1000, max_chars)]
+    if not instruction:
+        return text
+    return f"Instruct: {instruction}\nQuery: {text}"
 
 
 def build_groups(
@@ -343,3 +394,8 @@ def make_cluster_id(record_id: str) -> str:
     digest = hashlib.sha1(record_id.encode("utf-8")).hexdigest()[:10]
     prefix = clean[:68].strip("_") or "record"
     return f"cluster_{prefix}_{digest}"
+
+
+def _partition_digest(partition_key: Sequence[str]) -> str:
+    raw = "\n".join(map(str, partition_key))
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]

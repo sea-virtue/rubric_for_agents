@@ -105,7 +105,29 @@ bash local_inference/download_hf_model.sh
 bash local_inference/start_vllm_qwen.sh
 ```
 
-For vLLM chat plus local HF embeddings:
+For vLLM chat plus Qwen3 embeddings and DBSCAN clustering:
+
+```bash
+pip install huggingface-hub vllm scikit-learn
+
+chmod +x local_inference/download_qwen3_embedding.sh
+bash local_inference/download_qwen3_embedding.sh
+
+# Terminal 1: chat model for rubric mining.
+bash local_inference/start_vllm_qwen.sh
+
+# Terminal 2: embedding model for DBSCAN clustering.
+# Use CUDA_VISIBLE_DEVICES/TENSOR_PARALLEL_SIZE if you want to reserve specific GPUs.
+bash local_inference/start_vllm_qwen3_embedding.sh
+
+export OPENAI_API_KEY="local"
+python src/miner.py --config configs/local_qwen3_vllm_qwen3_embedding_full.json
+```
+
+`configs/local_qwen3_vllm_full.json` also points to the same Qwen3 embedding
+server by default.
+
+For vLLM chat plus local HF/SentenceTransformers embeddings:
 
 ```bash
 chmod +x local_inference/start_hf_openai_server.sh

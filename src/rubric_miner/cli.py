@@ -66,6 +66,9 @@ async def run_pipeline(args: argparse.Namespace) -> None:
         config.cluster_threshold,
         client=embedding_client,
         embedding_model=config.embedding_model or None,
+        embedding_instruction=config.embedding_instruction,
+        embedding_max_chars=config.embedding_max_chars,
+        embedding_batch_size=config.embedding_batch_size,
         min_cluster_size=config.min_cluster_size,
         algorithm=config.cluster_algorithm,
         partition_metadata_keys=config.cluster_partition_metadata_keys,
@@ -160,6 +163,9 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--cluster-algorithm", choices=["dbscan", "connected"], default=None)
     parser.add_argument("--cluster-partition-metadata-keys", default=None, help="Comma-separated metadata keys that cannot cross cluster boundaries")
     parser.add_argument("--embedding-model", default=None, help="Overrides TRACE_EMBEDDING_MODEL")
+    parser.add_argument("--embedding-instruction", default=None)
+    parser.add_argument("--embedding-max-chars", type=int, default=None)
+    parser.add_argument("--embedding-batch-size", type=int, default=None)
     parser.add_argument("--min-cluster-size", type=int, default=None)
     parser.add_argument("--generalization-threshold", type=float, default=None)
     parser.add_argument("--min-model-support", type=int, default=None)
@@ -201,6 +207,9 @@ def apply_cli_overrides(config: object, args: argparse.Namespace) -> None:
         "cluster_threshold",
         "cluster_algorithm",
         "embedding_model",
+        "embedding_instruction",
+        "embedding_max_chars",
+        "embedding_batch_size",
         "min_cluster_size",
         "generalization_threshold",
         "min_model_support",

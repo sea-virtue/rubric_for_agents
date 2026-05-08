@@ -3,7 +3,7 @@
   "input_format": "agent_reward_bench",
   "agent_reward_observation_chars": 500,
   "agent_reward_observation_policy": "last_and_errors",
-  "out_dir": "outputs/local_qwen3_vllm_full",
+  "out_dir": "outputs/local_qwen3_vllm_qwen3_embedding_full",
   "api_key_env": "OPENAI_API_KEY",
   "base_url": "http://127.0.0.1:8000/v1",
   "embedding_api_key_env": "OPENAI_API_KEY",

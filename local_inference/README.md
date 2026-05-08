@@ -14,12 +14,48 @@ Option A: vLLM for chat, no embeddings
 Option B: vLLM for chat + HF/SentenceTransformers for embeddings
   miner -> vLLM /v1/chat/completions
   miner -> HF server /v1/embeddings
+
+Option C: vLLM for chat + vLLM Qwen3-Embedding for embeddings
+  miner -> vLLM chat server /v1/chat/completions
+  miner -> vLLM embedding server /v1/embeddings
 ```
 
 vLLM can serve embedding models if the model itself is an embedding model, but a
 Qwen3 Instruct chat model is not an embedding model. For Qwen3-Instruct, keep
 `embedding_model` empty or run the included HF embedding server with a dedicated
 embedding model.
+
+## vLLM Qwen3 Embedding Server
+
+Download Qwen3-Embedding-8B to the ignored `local_inference/models/` directory:
+
+```bash
+pip install huggingface-hub
+chmod +x local_inference/download_qwen3_embedding.sh
+bash local_inference/download_qwen3_embedding.sh
+```
+
+Start an OpenAI-compatible vLLM embedding server on port 8001:
+
+```bash
+chmod +x local_inference/start_vllm_qwen3_embedding.sh
+bash local_inference/start_vllm_qwen3_embedding.sh
+```
+
+If the chat server already uses all GPUs, start chat and embedding servers with
+separate `CUDA_VISIBLE_DEVICES` values. For example:
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1 TENSOR_PARALLEL_SIZE=2 bash local_inference/start_vllm_qwen.sh
+CUDA_VISIBLE_DEVICES=2,3 TENSOR_PARALLEL_SIZE=2 bash local_inference/start_vllm_qwen3_embedding.sh
+```
+
+Check the embedding endpoint:
+
+```bash
+chmod +x local_inference/check_embedding.sh
+bash local_inference/check_embedding.sh
+```
 
 ## vLLM Chat Server
 

@@ -28,6 +28,12 @@ class MinerConfig(CompatModel):
     base_url: Optional[str] = None
     embedding_api_key_env: str = "OPENAI_API_KEY"
     embedding_base_url: Optional[str] = None
+    embedding_instruction: str = (
+        "Represent this agent trajectory for clustering by task intent, strategy, tools, observations, "
+        "error recovery, and success/failure behavior."
+    )
+    embedding_max_chars: int = 20000
+    embedding_batch_size: int = 16
 
     rubric_models: List[str] = Field(default_factory=lambda: ["gpt-4.1-mini", "gpt-4.1-mini"])
     merge_model: str = "gpt-4.1"
