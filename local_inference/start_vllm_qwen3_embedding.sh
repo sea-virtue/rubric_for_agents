@@ -72,4 +72,5 @@ python -m vllm.entrypoints.openai.api_server \
   --tensor-parallel-size "${TENSOR_PARALLEL_SIZE}" \
   --max-model-len "${MAX_MODEL_LEN}" \
   --gpu-memory-utilization "${GPU_MEMORY_UTILIZATION}" \
-  --task embed
+  --runner pooling \
+  --convert embed

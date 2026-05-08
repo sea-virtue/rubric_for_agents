@@ -42,6 +42,15 @@ chmod +x local_inference/start_vllm_qwen3_embedding.sh
 bash local_inference/start_vllm_qwen3_embedding.sh
 ```
 
+The script uses vLLM's pooling/embed mode:
+
+```bash
+--runner pooling --convert embed
+```
+
+Older vLLM examples may show `--task embed`; your installed vLLM may reject
+that flag if it has switched to the newer runner/convert arguments.
+
 If the chat server already uses all GPUs, start chat and embedding servers with
 separate `CUDA_VISIBLE_DEVICES` values. For example:
 
