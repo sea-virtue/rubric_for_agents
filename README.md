@@ -49,9 +49,10 @@ src/
       export.py
 configs/
   example_task.json
-  csv_multirow_task.json
   local_qwen3_vllm.json
-  local_qwen3_vllm_hf_embedding.json
+  local_qwen3_vllm_balanced_debug.json
+  local_qwen3_vllm_full.json
+  local_qwen3_vllm_qwen3_embedding_full.json
 local_inference/
   README.md
   download_hf_model.sh
@@ -127,7 +128,9 @@ python src/miner.py --config configs/local_qwen3_vllm_qwen3_embedding_full.json
 `configs/local_qwen3_vllm_full.json` also points to the same Qwen3 embedding
 server by default.
 
-For vLLM chat plus local HF/SentenceTransformers embeddings:
+For a custom HF/SentenceTransformers embedding server, use
+`local_inference/start_hf_openai_server.sh` and copy one of the Qwen3 embedding
+configs as a template:
 
 ```bash
 chmod +x local_inference/start_hf_openai_server.sh
@@ -135,8 +138,6 @@ EMBEDDING_MODEL="BAAI/bge-m3" \
 SERVED_EMBEDDING_MODEL_NAME="bge-m3" \
 PORT=8001 \
 local_inference/start_hf_openai_server.sh
-
-python src/miner.py --config configs/local_qwen3_vllm_hf_embedding.json
 ```
 
 vLLM can expose embeddings only when serving an embedding model. A Qwen3
@@ -219,7 +220,7 @@ For CSV, two layouts are supported:
 2. Multiple rows per trace, grouped by a column such as `trace_id` and ordered
    by `step`.
 
-Example multi-row CSV config:
+Example multi-row CSV config snippet:
 
 ```json
 {
@@ -234,7 +235,7 @@ Example multi-row CSV config:
 }
 ```
 
-AgentRewardBench local snapshot config:
+AgentRewardBench local snapshot config snippet:
 
 ```json
 {

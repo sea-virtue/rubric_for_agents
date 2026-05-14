@@ -141,5 +141,9 @@ prefer vLLM for chat generation.
 
 Use `configs/local_qwen3_vllm.json` for vLLM-only chat.
 
-Use `configs/local_qwen3_vllm_hf_embedding.json` when chat and embeddings are
-served on different local ports.
+Use `configs/local_qwen3_vllm_qwen3_embedding_full.json` for the current
+recommended setup: vLLM chat on port 8000 plus Qwen3-Embedding on port 8001 with
+DBSCAN clustering.
+
+Use `configs/local_qwen3_vllm_balanced_debug.json` for a smaller balanced debug
+run.
