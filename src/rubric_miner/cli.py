@@ -59,6 +59,7 @@ async def run_pipeline(args: argparse.Namespace) -> None:
         agent_reward_observation_policy=config.agent_reward_observation_policy,
         agent_reward_sample_per_bucket=config.agent_reward_sample_per_bucket,
         agent_reward_sample_seed=config.agent_reward_sample_seed,
+        parse_include_chat_messages=config.parse_include_chat_messages,
     )
     clusters = await cluster_stage(
         parsed,
@@ -153,6 +154,11 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help="Balanced AgentRewardBench sample size per benchmark/outcome bucket",
     )
     parser.add_argument("--agent-reward-sample-seed", type=int, default=None)
+    parser.add_argument(
+        "--parse-include-chat-messages",
+        action="store_true",
+        help="Keep chat_messages in parsed output and use them for clustering/prompt text",
+    )
     parser.add_argument("--out-dir", type=Path, default=None)
     parser.add_argument("--base-url", default=None, help="OpenAI-compatible chat base URL")
     parser.add_argument("--embedding-base-url", default=None, help="OpenAI-compatible embedding base URL")
@@ -201,6 +207,7 @@ def apply_cli_overrides(config: object, args: argparse.Namespace) -> None:
         "agent_reward_observation_policy",
         "agent_reward_sample_per_bucket",
         "agent_reward_sample_seed",
+        "parse_include_chat_messages",
         "out_dir",
         "merge_model",
         "concurrency",

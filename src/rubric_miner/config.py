@@ -20,6 +20,7 @@ class MinerConfig(CompatModel):
     agent_reward_observation_policy: str = "last"
     agent_reward_sample_per_bucket: Optional[int] = None
     agent_reward_sample_seed: int = 13
+    parse_include_chat_messages: bool = False
     out_dir: Path = Path("outputs/rubric_miner")
     log_file: Optional[Path] = None
     verbose: bool = False

@@ -9,21 +9,69 @@ from .trace import trim_text
 def trace_snippets(records: Sequence[Mapping[str, Any]], max_records: int, max_chars: int) -> str:
     chunks: List[str] = []
     for record in records[:max_records]:
-        trace_text = str(record.get("trace_text", ""))
-        compact = record.get("compact_trace")
-        if isinstance(compact, Mapping) and compact.get("timeline"):
-            trace_text = trace_text or json.dumps(compact, ensure_ascii=False)
+        trace_text = _render_parsed_record(record)
         chunks.append(
             "\n".join(
                 [
                     f"__record_id__: {record.get('__record_id__')}",
-                    f"task: {trim_text(str(record.get('task', '')), 600)}",
+                    f"task_instruction: {trim_text(str(record.get('task_instruction', record.get('task', ''))), 600)}",
                     f"outcome: {record.get('outcome', 'unknown')}",
-                    f"compact_trace: {trim_text(trace_text, max_chars)}",
+                    f"parsed_trace: {trim_text(trace_text, max_chars)}",
                 ]
             )
         )
     return "\n\n---\n\n".join(chunks)
+
+
+def _render_parsed_record(record: Mapping[str, Any]) -> str:
+    steps = record.get("steps", [])
+    if not isinstance(steps, list):
+        return json.dumps(record, ensure_ascii=False)
+    lines: List[str] = []
+    chat_messages = record.get("chat_messages")
+    if chat_messages not in (None, ""):
+        lines.append("chat_messages:")
+        lines.append(trim_text(json.dumps(chat_messages, ensure_ascii=False, indent=2), 4000))
+    validation = record.get("validation", {})
+    if isinstance(validation, Mapping):
+        reward = validation.get("reward", validation.get("cum_reward", ""))
+        if reward not in ("", None):
+            lines.append(f"validation.reward: {reward}")
+        if validation.get("n_steps") not in ("", None):
+            lines.append(f"validation.n_steps: {validation.get('n_steps')}")
+    for step in steps[:24]:
+        if not isinstance(step, Mapping):
+            continue
+        lines.append(f"step_index: {step.get('step_index', '')}")
+        thought = str(step.get("thought_process", "")).strip()
+        if thought:
+            lines.append(f"thought_process: {thought}")
+        action = step.get("action_signature", {})
+        if isinstance(action, Mapping):
+            bits = [
+                str(action.get("action_type", "")).strip(),
+                str(action.get("target_bid", "")).strip(),
+                str(action.get("target_text", "")).strip(),
+            ]
+            lines.append("action_signature: " + " | ".join(bit for bit in bits if bit))
+        obs = step.get("obs_snapshot", {})
+        if isinstance(obs, Mapping):
+            title = str(obs.get("page_title", "")).strip()
+            focused = str(obs.get("focused_element", "")).strip()
+            cues = obs.get("task_relevant_cues", [])
+            if title or focused or cues:
+                lines.append("obs_snapshot:")
+                if title:
+                    lines.append(f"page_title: {title}")
+                if focused:
+                    lines.append(f"focused_element: {focused}")
+                if isinstance(cues, list):
+                    for cue in cues[:8]:
+                        lines.append(f"cue: {cue}")
+        error = step.get("error_signal", {})
+        if isinstance(error, Mapping) and error.get("has_error"):
+            lines.append(f"error_signal: {error.get('error_type', 'unknown')} | {error.get('message', '')}")
+    return "\n".join(lines)
 
 
 def mining_messages(group: Mapping[str, Any], max_records: int, max_chars: int) -> List[Dict[str, str]]:

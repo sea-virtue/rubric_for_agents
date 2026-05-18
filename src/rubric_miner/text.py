@@ -98,13 +98,55 @@ def sequence_similarity(left: Sequence[str], right: Sequence[str]) -> float:
 
 
 def cluster_text(record: Mapping[str, Any]) -> str:
-    features = record.get("features", {}) if isinstance(record.get("features"), dict) else {}
-    strategy = str(features.get("strategy_signature", ""))
-    tools = " ".join(map(str, features.get("tool_names", []))) if isinstance(features.get("tool_names"), list) else ""
-    compact = record.get("compact_trace")
-    compact_text = str(compact.get("text", "")) if isinstance(compact, Mapping) else ""
-    trace_text = compact_text or str(record.get("trace_text", ""))
-    return f"{record.get('task', '')}\nstrategy: {strategy}\ntools: {tools}\n{trace_text[:20000]}"
+    task = str(record.get("task_instruction", record.get("task", "")))
+    steps = record.get("steps", [])
+    step_texts = []
+    if isinstance(steps, list):
+        for step in steps[:32]:
+            if not isinstance(step, Mapping):
+                continue
+            action = step.get("action_signature", {})
+            action_text = ""
+            if isinstance(action, Mapping):
+                action_text = " ".join(
+                    part
+                    for part in (
+                        str(action.get("action_type", "")),
+                        str(action.get("target_bid", "")),
+                        str(action.get("target_text", "")),
+                    )
+                    if part.strip()
+                ).strip()
+            obs = step.get("obs_snapshot", {})
+            obs_bits = []
+            if isinstance(obs, Mapping):
+                for key in ("page_title", "focused_element"):
+                    value = str(obs.get(key, "")).strip()
+                    if value:
+                        obs_bits.append(f"{key}: {value}")
+                cues = obs.get("task_relevant_cues", [])
+                if isinstance(cues, list) and cues:
+                    obs_bits.extend([str(cue) for cue in cues[:4]])
+            pieces = [
+                f"step {step.get('step_index', '')}",
+                str(step.get("thought_process", "")).strip(),
+                action_text,
+                " | ".join(obs_bits),
+            ]
+            step_texts.append("\n".join(part for part in pieces if part))
+    chat_messages = record.get("chat_messages", None)
+    chat_text = ""
+    if chat_messages not in (None, ""):
+        chat_text = f"chat_messages: {str(chat_messages)[:8000]}"
+    validation = record.get("validation", {})
+    validation_text = ""
+    if isinstance(validation, Mapping):
+        validation_text = " ".join(
+            f"{key}:{validation.get(key)}"
+            for key in ("reward", "n_steps", "terminated", "truncated", "has_error", "outcome")
+            if validation.get(key) not in ("", None, False)
+        )
+    return "\n".join(part for part in [task, validation_text, chat_text, "\n\n".join(step_texts)] if part)
 
 
 def top_keywords(texts: Iterable[str], limit: int = 8) -> str:

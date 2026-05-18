@@ -92,6 +92,7 @@ class TraceDataLoader:
         agent_reward_observation_policy: str = "last",
         agent_reward_sample_per_bucket: Optional[int] = None,
         agent_reward_sample_seed: int = 13,
+        include_chat_messages: bool = False,
     ) -> None:
         self.input_format = input_format
         self.field_map = dict(field_map or {})
@@ -101,6 +102,7 @@ class TraceDataLoader:
         self.agent_reward_observation_policy = agent_reward_observation_policy
         self.agent_reward_sample_per_bucket = agent_reward_sample_per_bucket
         self.agent_reward_sample_seed = agent_reward_sample_seed
+        self.include_chat_messages = include_chat_messages
 
     def load(self, path: Path) -> List[Dict[str, Any]]:
         if not path.exists():
@@ -149,9 +151,12 @@ class TraceDataLoader:
                 key: value
                 for key, value in item.items()
                 if key not in set(ID_KEYS + TASK_KEYS + OUTCOME_KEYS + TRACE_KEYS + STEP_KEYS)
+                and key not in {"chat_messages", "response", "trajectory_info", "raw_input"}
             },
             "raw_input": {"source_keys": sorted(map(str, item.keys()))},
         }
+        if self.include_chat_messages and "chat_messages" in item:
+            canonical["chat_messages"] = item.get("chat_messages")
         return canonical
 
     def _load_directory(self, path: Path) -> List[Dict[str, Any]]:
@@ -341,7 +346,7 @@ class TraceDataLoader:
         task_meta = self._agent_reward_task_metadata(task_id, benchmark_meta)
         task_family = self._agent_reward_task_family(benchmark, task_id, task_meta)
 
-        return {
+        record = {
             "__record_id__": record_id,
             "task": str(raw.get("goal", "")).strip(),
             "outcome": self._agent_reward_outcome(summary, annotation),
@@ -371,6 +376,26 @@ class TraceDataLoader:
                 "summary_info": summary,
             },
         }
+        if self.include_chat_messages and "chat_messages" in raw:
+            record["chat_messages"] = raw.get("chat_messages")
+        elif self.include_chat_messages and "response" in raw:
+            record["chat_messages"] = self._chat_messages_from_response(raw.get("response"))
+        return record
+
+    def _chat_messages_from_response(self, response: Any) -> Any:
+        if not isinstance(response, Mapping):
+            return response
+        chat_messages = response.get("chat_messages")
+        if chat_messages is not None:
+            return chat_messages
+        choices = response.get("choices")
+        if isinstance(choices, list) and choices:
+            first = choices[0]
+            if isinstance(first, Mapping):
+                message = first.get("message")
+                if isinstance(message, Mapping):
+                    return [{"role": str(message.get("role", "assistant")), "content": message.get("content", "")}]
+        return response
 
     def _agent_reward_task_metadata(
         self,

@@ -11,7 +11,6 @@ except ImportError:  # pragma: no cover - pydantic v1
 
 
 if ConfigDict is not None:
-
     class CompatModel(BaseModel):
         model_config = ConfigDict(
             populate_by_name=True,
@@ -27,16 +26,22 @@ else:
             extra = "allow"
 
 
+class CompactStep(CompatModel):
+    step_index: int
+    thought_process: str = ""
+    action_signature: Dict[str, Any] = Field(default_factory=dict)
+    obs_snapshot: Dict[str, Any] = Field(default_factory=dict)
+    error_signal: Dict[str, Any] = Field(default_factory=dict)
+
+
 class TraceParsed(CompatModel):
     record_id: str = Field(alias="__record_id__")
-    task: str = ""
+    task_instruction: str = ""
     outcome: str = "unknown"
-    trace_text: str
-    compact_trace: Dict[str, Any] = Field(default_factory=dict)
-    structured_sequence: List[Dict[str, Any]] = Field(default_factory=list)
-    features: Dict[str, Any] = Field(default_factory=dict)
-    raw: Any
+    steps: List[CompactStep] = Field(default_factory=list)
+    validation: Dict[str, Any] = Field(default_factory=dict)
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    chat_messages: Any = None
     skipped: bool = False
 
 

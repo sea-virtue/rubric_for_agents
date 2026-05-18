@@ -21,6 +21,7 @@ async def parse_stage(
     agent_reward_observation_policy: str = "last",
     agent_reward_sample_per_bucket: Optional[int] = None,
     agent_reward_sample_seed: int = 13,
+    parse_include_chat_messages: bool = False,
 ) -> List[Dict[str, Any]]:
     logger.info(
         "loading_input_start",
@@ -41,6 +42,7 @@ async def parse_stage(
         agent_reward_observation_policy=agent_reward_observation_policy,
         agent_reward_sample_per_bucket=agent_reward_sample_per_bucket,
         agent_reward_sample_seed=agent_reward_sample_seed,
+        parse_include_chat_messages=parse_include_chat_messages,
     )
     current_ids = {
         str(record.get("__record_id__") or stable_record_id(record, idx))

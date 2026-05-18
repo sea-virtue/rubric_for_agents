@@ -69,6 +69,7 @@ def read_input_records(
     agent_reward_observation_policy: str = "last",
     agent_reward_sample_per_bucket: Optional[int] = None,
     agent_reward_sample_seed: int = 13,
+    parse_include_chat_messages: bool = False,
 ) -> List[Dict[str, Any]]:
     loader = TraceDataLoader(
         input_format=input_format,
@@ -79,5 +80,6 @@ def read_input_records(
         agent_reward_observation_policy=agent_reward_observation_policy,
         agent_reward_sample_per_bucket=agent_reward_sample_per_bucket,
         agent_reward_sample_seed=agent_reward_sample_seed,
+        include_chat_messages=parse_include_chat_messages,
     )
     return loader.load(path)

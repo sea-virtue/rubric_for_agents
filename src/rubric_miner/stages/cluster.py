@@ -258,16 +258,34 @@ def _mean_similarity(
 
 
 def _strategy_sequence(record: Mapping[str, Any]) -> List[str]:
-    events = record.get("structured_sequence", [])
-    if not isinstance(events, list):
+    steps = record.get("steps", [])
+    if not isinstance(steps, list):
         return []
-    return [str(event.get("type", "")) for event in events if isinstance(event, dict)]
+    sequence = []
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        action = step.get("action_signature", {})
+        if isinstance(action, dict):
+            sequence.append(str(action.get("action_type", "")))
+    return [item for item in sequence if item]
 
 
 def _tool_sequence(record: Mapping[str, Any]) -> List[str]:
-    features = record.get("features", {})
-    if isinstance(features, dict) and isinstance(features.get("tool_names"), list):
-        return [str(tool) for tool in features["tool_names"]]
+    steps = record.get("steps", [])
+    if not isinstance(steps, list):
+        return []
+    tools: List[str] = []
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        obs = step.get("obs_snapshot", {})
+        if isinstance(obs, dict):
+            source_key = str(obs.get("source_key", "")).strip()
+            if source_key:
+                tools.append(source_key)
+    if tools:
+        return tools
     return []
 
 

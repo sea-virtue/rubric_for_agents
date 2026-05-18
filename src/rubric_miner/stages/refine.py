@@ -99,7 +99,10 @@ def pick_contrast_pair(
     best_score = -1.0
     for success in successes:
         for failure in failures:
-            score = semantic_similarity(str(success.get("task", "")), str(failure.get("task", "")))
+            score = semantic_similarity(
+                str(success.get("task_instruction", success.get("task", ""))),
+                str(failure.get("task_instruction", failure.get("task", ""))),
+            )
             if score > best_score:
                 best_pair = (success, failure)
                 best_score = score
