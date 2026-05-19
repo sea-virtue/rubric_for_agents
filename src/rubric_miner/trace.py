@@ -172,7 +172,7 @@ def _obs_snapshot_from_event(event: Mapping[str, Any]) -> Dict[str, Any]:
                     cues.append(f"{section}: {cue_text}")
     if not cues:
         observation_text = str(event.get("observation", event.get("axtree_pruned", event.get("axtree", ""))))
-        cues = extract_ui_cues(observation_text, limit=16, max_chars=220)
+        cues = extract_rubric_ui_cues(observation_text, limit=48, max_chars=260)
     page_title = ""
     for cue in cues:
         match = re.search(r"heading '([^']+)'", cue)
@@ -185,8 +185,51 @@ def _obs_snapshot_from_event(event: Mapping[str, Any]) -> Dict[str, Any]:
         "page_title": page_title,
         "focused_element": focused_element,
         "clickable_options": [cue for cue in cues if any(token in cue.lower() for token in ("button", "link", "option", "checkbox", "combobox", "textbox", "searchbox"))],
-        "task_relevant_cues": cues[:12],
+        "task_relevant_cues": cues[:24],
     }
+
+
+RUBRIC_UI_LINE_RE = re.compile(
+    r"(StaticText|heading|grid|table|region|main|columnheader|rowgroup|gridcell|button|link|textbox|searchbox|combobox|checkbox|alert|option)",
+    re.IGNORECASE,
+)
+
+
+def extract_rubric_ui_cues(text: str, *, limit: int, max_chars: int) -> List[str]:
+    """Extract UI cues with rubric evidence roles prioritized over tree order."""
+
+    candidates: List[tuple[int, int, str]] = []
+    for idx, raw_line in enumerate(str(text or "").splitlines()):
+        line = re.sub(r"\s+", " ", raw_line).strip()
+        if not line or not RUBRIC_UI_LINE_RE.search(line):
+            continue
+        lowered = line.lower()
+        score = 0
+        if any(role in lowered for role in ("heading", "grid '", "table '", "region '", "main '")):
+            score += 12
+        if any(role in lowered for role in ("statictext", "columnheader", "gridcell")):
+            score += 8
+        if any(role in lowered for role in ("link", "button", "textbox", "searchbox", "combobox", "checkbox")):
+            score += 5
+        if any(marker in lowered for marker in ("error", "alert", "invalid", "failed", "no data", "showing rows")):
+            score += 4
+        if re.search(r"'[^']{3,}'", line):
+            score += 2
+        if any(boilerplate in lowered for boilerplate in ("global skip links", "my servicenow landing page", "show help", "show notifications")):
+            score -= 7
+        if any(emptyish in lowered for emptyish in ("generic ''", "section ''", "row ''", "gridcell ''")):
+            score -= 3
+        # Keep a little early navigation context, but let content evidence win.
+        if idx < 20:
+            score += 1
+        candidates.append((score, idx, trim_text(line, max_chars)))
+
+    if not candidates and text.strip():
+        return [trim_text(re.sub(r"\s+", " ", text.strip()), max_chars)]
+
+    candidates.sort(key=lambda item: (-item[0], item[1]))
+    selected = [line for score, _, line in candidates if score > -4][:limit]
+    return _dedupe_text(selected)
 
 
 def _error_signal_from_event(event: Mapping[str, Any]) -> Dict[str, Any]:
@@ -216,7 +259,13 @@ def _compact_step_from_event(event: Mapping[str, Any], fallback_index: int) -> D
         "step_index": step_index,
         "thought_process": thought,
         "action_signature": parse_action_signature(action),
-        "obs_snapshot": {},
+        "obs_snapshot": {
+            "url": str(event.get("url", "")).strip(),
+            "screenshot_path": str(event.get("screenshot_path", "")).strip(),
+            "focused_element": str(event.get("focused_element", "")).strip(),
+            "task_relevant_cues": [f"url: {event.get('url')}"] if event.get("url") else [],
+            "clickable_options": [],
+        },
         "error_signal": _error_signal_from_event(event),
     }
 
@@ -228,6 +277,8 @@ def _attach_observation(step: Dict[str, Any], event: Mapping[str, Any]) -> None:
         current = {}
     merged = dict(current)
     merged["source_key"] = snapshot.get("source_key", merged.get("source_key", ""))
+    merged["url"] = str(event.get("url", merged.get("url", ""))).strip()
+    merged["screenshot_path"] = str(event.get("screenshot_path", merged.get("screenshot_path", ""))).strip()
     merged["page_title"] = snapshot.get("page_title", merged.get("page_title", ""))
     merged["focused_element"] = snapshot.get("focused_element", merged.get("focused_element", ""))
     merged["clickable_options"] = _merge_list_values(merged.get("clickable_options", []), snapshot.get("clickable_options", []))
@@ -244,6 +295,10 @@ def _finalize_step(step: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def parsed_trace_to_text(record: Mapping[str, Any]) -> str:
+    runtime_summary = record.get("runtime_summary")
+    if isinstance(runtime_summary, Mapping):
+        return runtime_summary_to_text(runtime_summary)
+
     task = str(record.get("task_instruction", record.get("task", ""))).strip()
     outcome = str(record.get("outcome", "unknown")).strip()
     steps = record.get("steps", [])
@@ -289,6 +344,536 @@ def parsed_trace_to_text(record: Mapping[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def runtime_summary_to_text(summary: Mapping[str, Any]) -> str:
+    """Render the rule-based, rubric-ready summary without step reasoning."""
+
+    lines = [
+        f"task_instruction: {summary.get('task_instruction', '')}",
+        f"outcome: {summary.get('outcome', 'unknown')}",
+    ]
+    validation = summary.get("validation", {})
+    if isinstance(validation, Mapping):
+        reward = validation.get("reward")
+        if reward not in (None, ""):
+            lines.append(f"validation.reward: {reward}")
+        if validation.get("terminated") not in (None, ""):
+            lines.append(f"validation.terminated: {validation.get('terminated')}")
+
+    goal_terms = summary.get("goal_terms", [])
+    if isinstance(goal_terms, list) and goal_terms:
+        lines.append("goal_terms: " + ", ".join(map(str, goal_terms[:12])))
+
+    action_sequence = summary.get("action_sequence", [])
+    if isinstance(action_sequence, list) and action_sequence:
+        lines.append("action_sequence:")
+        for action in action_sequence[:24]:
+            if isinstance(action, Mapping):
+                text = action.get("action")
+                if action.get("target_text"):
+                    text = f"{text} text={action.get('target_text')}"
+                lines.append(f"- step {action.get('step_index')}: {text}")
+
+    final_state = summary.get("final_state", {})
+    if isinstance(final_state, Mapping):
+        evidence = final_state.get("evidence_lines", [])
+        if evidence:
+            lines.append("final_state_evidence:")
+            for line in evidence[:12]:
+                lines.append(f"- {line}")
+
+    cards = summary.get("state_cards", [])
+    if isinstance(cards, list) and cards:
+        lines.append("state_cards:")
+        for card in cards[:8]:
+            if not isinstance(card, Mapping):
+                continue
+            lines.append(
+                f"- {card.get('state_id', '')} | stage={card.get('stage', '')} | "
+                f"role={card.get('rubric_role', '')}"
+            )
+            for line in list(card.get("evidence_lines", []))[:6]:
+                lines.append(f"  evidence: {line}")
+    return "\n".join(lines)
+
+
+def build_rubric_ready_views(
+    *,
+    record_id: str,
+    task_instruction: str,
+    outcome: str,
+    steps: Sequence[Mapping[str, Any]],
+    validation: Mapping[str, Any],
+    metadata: Mapping[str, Any],
+) -> Dict[str, Any]:
+    """Build conservative parser outputs for later rubric extraction.
+
+    The parser does not decide the rubric. It only recalls likely evidence,
+    marks candidate state cards, and records enough audit information to trace
+    every compact cue back to a step.
+    """
+
+    goal_terms = extract_goal_terms(task_instruction)
+    action_sequence = [_runtime_action_item(step) for step in steps if isinstance(step, Mapping)]
+    action_sequence = [item for item in action_sequence if item]
+    state_cards = build_candidate_state_cards(steps, goal_terms, outcome=outcome, validation=validation)
+    final_state = _final_state_summary(steps, goal_terms)
+    risk_signals = _risk_signals(steps)
+
+    runtime_summary = {
+        "schema_version": "rubric_ready_runtime_v1",
+        "__record_id__": record_id,
+        "task_instruction": task_instruction,
+        "outcome": outcome,
+        "validation": {
+            "reward": validation.get("reward"),
+            "raw_reward": validation.get("raw_reward"),
+            "n_steps": validation.get("n_steps"),
+            "terminated": validation.get("terminated"),
+            "truncated": validation.get("truncated"),
+            "has_error": validation.get("has_error"),
+        },
+        "goal_terms": goal_terms,
+        "action_sequence": action_sequence[:120],
+        "final_state": final_state,
+        "state_cards": state_cards,
+        "risk_signals": risk_signals,
+        "evidence_policy": {
+            "parser_role": "evidence_recall_not_rubric_judgment",
+            "runtime_omits": ["full_reasoning", "full_axtree", "full_dom", "full_chat_messages"],
+            "runtime_keeps": [
+                "goal_terms",
+                "validation_snapshot",
+                "action_sequence",
+                "final_state_evidence",
+                "candidate_state_cards",
+                "error_and_loop_signals",
+                "screenshot_paths",
+                "source_step_indices",
+            ],
+        },
+    }
+    audit_trace = {
+        "schema_version": "rubric_ready_audit_v1",
+        "__record_id__": record_id,
+        "parser_note": (
+            "Audit trace keeps source pointers and lossy-reduction notes. "
+            "Use it to inspect or repair runtime summaries; do not treat it as a rubric."
+        ),
+        "source_metadata": {
+            "benchmark": metadata.get("benchmark"),
+            "dataset": metadata.get("dataset"),
+            "agent": metadata.get("agent"),
+            "model": metadata.get("model"),
+            "task_id": metadata.get("task_id"),
+            "task_family": metadata.get("task_family"),
+            "source_path": metadata.get("source_path"),
+            "relative_source_path": metadata.get("relative_source_path"),
+        },
+        "reasoning_policy": {
+            "runtime_summary": "does not include full step reasoning",
+            "audit_location": "steps[*].thought_process",
+            "reason": "agent reasoning can be useful for inspection but is weaker evidence than observed UI state",
+        },
+        "state_card_sources": [
+            {
+                "state_id": card.get("state_id"),
+                "source_steps": card.get("source_steps", []),
+                "source_fields": card.get("source_fields", []),
+                "screenshot_paths": card.get("screenshot_paths", []),
+            }
+            for card in state_cards
+        ],
+        "dropped_or_downweighted": [
+            "package_version",
+            "token/cost statistics",
+            "full accessibility tree/object by default",
+            "full DOM/pruned HTML by default",
+            "full chat history unless explicitly requested",
+        ],
+    }
+    return {"runtime_summary": runtime_summary, "audit_trace": audit_trace}
+
+
+def extract_goal_terms(task_instruction: str) -> List[str]:
+    text = str(task_instruction or "")
+    terms: List[str] = []
+
+    for match in re.finditer(r"[\"“”']([^\"“”']{3,80})[\"“”']", text):
+        _append_term(terms, match.group(1))
+
+    for part in re.split(r">|/|→|->", text):
+        clean = re.sub(r"^[^A-Za-z0-9]+|[^A-Za-z0-9]+$", "", part).strip()
+        if 3 <= len(clean) <= 80 and any(ch.isupper() for ch in clean):
+            _append_term(terms, clean)
+
+    for match in re.finditer(r"\b(?:[A-Z][A-Za-z0-9&.-]+)(?:\s+(?:[A-Z][A-Za-z0-9&.-]+)){0,5}\b", text):
+        phrase = match.group(0).strip()
+        if len(phrase) >= 3 and phrase.lower() not in _GOAL_TERM_STOPWORDS:
+            _append_term(terms, phrase)
+
+    for token in re.findall(r"[A-Za-z0-9][A-Za-z0-9_.-]{2,}", text):
+        lowered = token.lower()
+        if lowered in _GOAL_TERM_STOPWORDS:
+            continue
+        if any(term.lower() == lowered for term in terms):
+            continue
+        if any(lowered in term.lower().split() for term in terms):
+            continue
+        _append_term(terms, token)
+
+    return terms[:24]
+
+
+_GOAL_TERM_STOPWORDS = {
+    "the",
+    "and",
+    "for",
+    "to",
+    "your",
+    "you",
+    "need",
+    "navigate",
+    "module",
+    "application",
+    "where",
+    "contains",
+    "create",
+    "complete",
+    "following",
+    "steps",
+    "concretely",
+}
+
+
+def _append_term(terms: List[str], value: Any) -> None:
+    text = re.sub(r"\s+", " ", str(value or "").strip())
+    text = re.sub(r"^[\s:;,.>-]+|[\s:;,.>-]+$", "", text)
+    if not text or len(text) < 3:
+        return
+    key = text.lower()
+    if key in _GOAL_TERM_STOPWORDS:
+        return
+    if key not in {term.lower() for term in terms}:
+        terms.append(text)
+
+
+def build_candidate_state_cards(
+    steps: Sequence[Mapping[str, Any]],
+    goal_terms: Sequence[str],
+    *,
+    outcome: str,
+    validation: Mapping[str, Any],
+) -> List[Dict[str, Any]]:
+    cards: List[Dict[str, Any]] = []
+    clean_steps = [step for step in steps if isinstance(step, Mapping)]
+    if not clean_steps:
+        return cards
+
+    first_card = _state_card_from_steps(
+        "entry_state_candidate",
+        "entry_state",
+        "context_evidence",
+        clean_steps[:1],
+        goal_terms,
+        max_evidence=8,
+    )
+    if first_card:
+        first_card["state_summary"] = "Initial observable state and first action context."
+        cards.append(first_card)
+
+    matched_operation_steps = [
+        step
+        for step in clean_steps[:-1]
+        if _matched_terms(_step_search_text(step), goal_terms)
+    ]
+    for idx, step in enumerate(matched_operation_steps[:5], start=1):
+        card = _state_card_from_steps(
+            f"operation_state_candidate_{idx}",
+            "operation_state",
+            "partial_or_progress_evidence",
+            [step],
+            goal_terms,
+            max_evidence=10,
+        )
+        if card:
+            card["state_summary"] = "Intermediate observable state that matches one or more goal terms."
+            cards.append(card)
+
+    final_card = _state_card_from_steps(
+        "final_state_candidate",
+        "verification_state",
+        "success_or_failure_evidence",
+        clean_steps[-1:],
+        goal_terms,
+        max_evidence=16,
+    )
+    if final_card:
+        reward = validation.get("reward")
+        final_card["state_summary"] = "Final observable state for later rubric verification."
+        final_card["success_prior"] = {
+            "outcome": outcome,
+            "reward": reward,
+            "note": "This is dataset-level supervision, not parser judgment.",
+        }
+        cards.append(final_card)
+
+    risk_steps = [
+        step
+        for step in clean_steps
+        if isinstance(step.get("error_signal"), Mapping) and step["error_signal"].get("has_error")
+    ]
+    repeated = _repeated_action_runs(clean_steps)
+    if risk_steps or repeated:
+        card = {
+            "state_id": "risk_signal_candidate",
+            "stage": "risk_state",
+            "rubric_role": "negative_or_side_effect_evidence",
+            "state_summary": "Errors or repeated actions that may matter for failure/side-effect rubrics.",
+            "matched_goal_terms": [],
+            "evidence_lines": [],
+            "source_steps": [],
+            "source_fields": ["error_signal", "action_signature"],
+            "screenshot_paths": [],
+        }
+        for step in risk_steps[:8]:
+            card["source_steps"].append(step.get("step_index"))
+            error = step.get("error_signal", {})
+            card["evidence_lines"].append(f"step {step.get('step_index')} error: {error.get('message', '')}")
+        for run in repeated[:8]:
+            card["evidence_lines"].append(
+                f"repeated action {run['action']} from step {run['start_step']} to {run['end_step']} ({run['count']} times)"
+            )
+        cards.append(card)
+
+    return cards
+
+
+def _state_card_from_steps(
+    state_id: str,
+    stage: str,
+    rubric_role: str,
+    steps: Sequence[Mapping[str, Any]],
+    goal_terms: Sequence[str],
+    *,
+    max_evidence: int,
+) -> Dict[str, Any]:
+    evidence: List[str] = []
+    source_steps: List[Any] = []
+    screenshots: List[str] = []
+    fields = {"action_signature", "obs_snapshot"}
+    matched: List[str] = []
+    for step in steps:
+        source_steps.append(step.get("step_index"))
+        obs = step.get("obs_snapshot", {})
+        if isinstance(obs, Mapping):
+            screenshot = str(obs.get("screenshot_path", "")).strip()
+            if screenshot:
+                screenshots.append(screenshot)
+        step_evidence = _step_evidence_lines(step, goal_terms, max_lines=max(4, max_evidence))
+        evidence.extend(step_evidence)
+        matched.extend(_matched_terms("\n".join(step_evidence), goal_terms))
+    evidence = _dedupe_text(evidence)[:max_evidence]
+    matched = _dedupe_text(matched)
+    if not evidence and stage != "entry_state":
+        return {}
+    return {
+        "state_id": state_id,
+        "stage": stage,
+        "rubric_role": rubric_role,
+        "matched_goal_terms": matched,
+        "evidence_lines": evidence,
+        "source_steps": source_steps,
+        "source_fields": sorted(fields),
+        "screenshot_paths": _dedupe_text(screenshots),
+        "confidence": "candidate",
+    }
+
+
+def _runtime_action_item(step: Mapping[str, Any]) -> Dict[str, Any]:
+    action = step.get("action_signature", {})
+    if not isinstance(action, Mapping):
+        return {}
+    raw = str(action.get("raw", "")).strip()
+    action_type = str(action.get("action_type", "")).strip()
+    if raw.lower() == "none" or action_type.lower() == "none":
+        return {}
+    if not raw and not action_type:
+        return {}
+    obs = step.get("obs_snapshot", {})
+    return {
+        "step_index": step.get("step_index"),
+        "action": raw or action_type,
+        "action_type": action_type,
+        "target_bid": str(action.get("target_bid", "")).strip(),
+        "target_text": str(action.get("target_text", "")).strip(),
+        "url": str(obs.get("url", "")).strip() if isinstance(obs, Mapping) else "",
+    }
+
+
+def _final_state_summary(steps: Sequence[Mapping[str, Any]], goal_terms: Sequence[str]) -> Dict[str, Any]:
+    if not steps:
+        return {"evidence_lines": [], "matched_goal_terms": [], "source_step": None, "screenshot_path": ""}
+    final = steps[-1]
+    obs = final.get("obs_snapshot", {}) if isinstance(final, Mapping) else {}
+    evidence = _step_evidence_lines(final, goal_terms, max_lines=20)
+    return {
+        "source_step": final.get("step_index") if isinstance(final, Mapping) else None,
+        "screenshot_path": str(obs.get("screenshot_path", "")).strip() if isinstance(obs, Mapping) else "",
+        "url": str(obs.get("url", "")).strip() if isinstance(obs, Mapping) else "",
+        "matched_goal_terms": _matched_terms("\n".join(evidence), goal_terms),
+        "evidence_lines": evidence,
+    }
+
+
+def _step_evidence_lines(step: Mapping[str, Any], goal_terms: Sequence[str], *, max_lines: int) -> List[str]:
+    lines: List[str] = []
+    action = step.get("action_signature", {})
+    if isinstance(action, Mapping):
+        raw = str(action.get("raw", "")).strip()
+        target_text = str(action.get("target_text", "")).strip()
+        if raw and raw.lower() != "none":
+            lines.append(f"action: {raw}")
+        if target_text:
+            lines.append(f"action_target_text: {target_text}")
+    obs = step.get("obs_snapshot", {})
+    if isinstance(obs, Mapping):
+        url = str(obs.get("url", "")).strip()
+        if url:
+            lines.append(f"url: {url}")
+        page_title = str(obs.get("page_title", "")).strip()
+        if page_title:
+            lines.append(f"page_title: {page_title}")
+        cues = []
+        for key in ("task_relevant_cues", "clickable_options"):
+            value = obs.get(key, [])
+            if isinstance(value, list):
+                cues.extend(str(item) for item in value if str(item).strip())
+        lines.extend(_rank_evidence_lines(cues, goal_terms, limit=max_lines))
+    return _dedupe_text(lines)[:max_lines]
+
+
+def _rank_evidence_lines(lines: Sequence[str], goal_terms: Sequence[str], *, limit: int) -> List[str]:
+    scored: List[tuple[int, int, str]] = []
+    role_terms = (
+        "heading",
+        "statictext",
+        "grid",
+        "table",
+        "region",
+        "link",
+        "button",
+        "searchbox",
+        "textbox",
+        "combobox",
+        "alert",
+        "error",
+    )
+    for idx, line in enumerate(lines):
+        clean = re.sub(r"\s+", " ", str(line)).strip()
+        if not clean:
+            continue
+        lowered = clean.lower()
+        goal_hits = sum(1 for term in goal_terms if term and term.lower() in lowered)
+        role_hits = sum(1 for term in role_terms if term in lowered)
+        # Preserve some non-matching structural cues, but prioritize goal-term hits.
+        score = goal_hits * 10 + role_hits
+        if score or idx < 4:
+            scored.append((score, idx, trim_text(clean, 360)))
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [line for _, _, line in scored[:limit]]
+
+
+def _matched_terms(text: str, goal_terms: Sequence[str]) -> List[str]:
+    lowered = str(text or "").lower()
+    return [term for term in goal_terms if str(term).strip() and str(term).lower() in lowered]
+
+
+def _step_evidence_text(step: Mapping[str, Any], *, include_reasoning: bool) -> str:
+    chunks = _step_evidence_lines(step, [], max_lines=30)
+    if include_reasoning:
+        chunks.append(str(step.get("thought_process", "")))
+    return "\n".join(chunks)
+
+
+def _step_search_text(step: Mapping[str, Any]) -> str:
+    chunks: List[str] = []
+    action = step.get("action_signature", {})
+    if isinstance(action, Mapping):
+        chunks.extend(str(action.get(key, "")) for key in ("raw", "target_text", "target_bid"))
+    obs = step.get("obs_snapshot", {})
+    if isinstance(obs, Mapping):
+        chunks.extend(str(obs.get(key, "")) for key in ("url", "page_title", "focused_element"))
+        for key in ("task_relevant_cues", "clickable_options"):
+            value = obs.get(key, [])
+            if isinstance(value, list):
+                chunks.extend(str(item) for item in value)
+    return "\n".join(chunks)
+
+
+def _risk_signals(steps: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
+    errors = []
+    for step in steps:
+        if not isinstance(step, Mapping):
+            continue
+        error = step.get("error_signal", {})
+        if isinstance(error, Mapping) and error.get("has_error"):
+            errors.append(
+                {
+                    "step_index": step.get("step_index"),
+                    "error_type": error.get("error_type"),
+                    "message": error.get("message"),
+                }
+            )
+    return {
+        "errors": errors,
+        "repeated_action_runs": _repeated_action_runs(steps),
+    }
+
+
+def _repeated_action_runs(steps: Sequence[Mapping[str, Any]]) -> List[Dict[str, Any]]:
+    runs: List[Dict[str, Any]] = []
+    current_action = ""
+    current_start = None
+    current_end = None
+    count = 0
+    for step in steps:
+        if not isinstance(step, Mapping):
+            continue
+        action = step.get("action_signature", {})
+        raw = str(action.get("raw", "")).strip() if isinstance(action, Mapping) else ""
+        if not raw:
+            continue
+        step_idx = step.get("step_index")
+        if raw == current_action:
+            count += 1
+            current_end = step_idx
+            continue
+        if count >= 3:
+            runs.append({"action": current_action, "start_step": current_start, "end_step": current_end, "count": count})
+        current_action = raw
+        current_start = step_idx
+        current_end = step_idx
+        count = 1
+    if count >= 3:
+        runs.append({"action": current_action, "start_step": current_start, "end_step": current_end, "count": count})
+    return runs
+
+
+def _dedupe_text(values: Sequence[Any]) -> List[str]:
+    seen = set()
+    output: List[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        output.append(text)
+    return output
+
+
 def infer_outcome(record: Mapping[str, Any]) -> str:
     for key in ("outcome", "label", "status", "result"):
         value = record.get(key)
@@ -325,6 +910,14 @@ def parse_trace_record(record: Mapping[str, Any]) -> Dict[str, Any]:
     outcome = infer_outcome(record)
     metadata = _record_metadata(record)
     summary = record.get("summary_info", {})
+    if not isinstance(summary, Mapping) and isinstance(metadata.get("summary_info"), Mapping):
+        summary = metadata.get("summary_info", {})
+    elif not summary and isinstance(metadata.get("summary_info"), Mapping):
+        summary = metadata.get("summary_info", {})
+    if outcome == "unknown" and isinstance(summary, Mapping):
+        reward = summary.get("cum_reward", summary.get("reward"))
+        if isinstance(reward, (int, float)):
+            outcome = "success" if reward > 0 else "failure"
     chat_messages = record.get("chat_messages")
     if not task_instruction:
         task_instruction = trim_text(str(record.get("goal", "")), 400)
@@ -334,14 +927,26 @@ def parse_trace_record(record: Mapping[str, Any]) -> Dict[str, Any]:
     if not steps:
         steps = _parse_steps_from_text(record)
 
+    validation = _validation_snapshot(summary, outcome, steps)
+    rubric_ready = build_rubric_ready_views(
+        record_id=record_id,
+        task_instruction=task_instruction,
+        outcome=outcome,
+        steps=steps,
+        validation=validation,
+        metadata=metadata,
+    )
+
     parsed = TraceParsed(
         __record_id__=record_id,
         task_instruction=task_instruction,
         outcome=outcome,
         steps=[model_validate(CompactStep, step) for step in steps],
-        validation=_validation_snapshot(summary, outcome, steps),
+        validation=validation,
         metadata=metadata,
         chat_messages=chat_messages,
+        runtime_summary=rubric_ready["runtime_summary"],
+        audit_trace=rubric_ready["audit_trace"],
     )
     return model_dump(parsed)
 
@@ -535,6 +1140,24 @@ def _parse_compact_steps(trace_source: Any) -> List[Dict[str, Any]]:
     for idx, event in enumerate(raw_events):
         if not isinstance(event, Mapping):
             continue
+        if _is_step_event(event):
+            if current is not None:
+                steps.append(_finalize_step(current))
+            current = _compact_step_from_event(event, len(steps))
+            if current is None:
+                continue
+            if _is_observation_event(event):
+                _attach_observation(current, event)
+            if _is_error_event(event):
+                current["error_signal"] = _merge_error_signals(current.get("error_signal", {}), event)
+            if pending_observations:
+                for observation in pending_observations:
+                    _attach_observation(current, observation)
+                pending_observations = []
+            if pending_errors:
+                current["error_signal"] = _merge_error_signals(current.get("error_signal", {}), pending_errors[-1])
+                pending_errors = []
+            continue
         if _is_observation_event(event):
             if current is None:
                 pending_observations.append(event)
@@ -546,20 +1169,6 @@ def _parse_compact_steps(trace_source: Any) -> List[Dict[str, Any]]:
                 pending_errors.append(event)
             else:
                 current["error_signal"] = _merge_error_signals(current.get("error_signal", {}), event)
-            continue
-        if _is_step_event(event):
-            if current is not None:
-                steps.append(_finalize_step(current))
-            current = _compact_step_from_event(event, len(steps))
-            if current is None:
-                continue
-            if pending_observations:
-                for observation in pending_observations:
-                    _attach_observation(current, observation)
-                pending_observations = []
-            if pending_errors:
-                current["error_signal"] = _merge_error_signals(current.get("error_signal", {}), pending_errors[-1])
-                pending_errors = []
             continue
         if current is None:
             continue

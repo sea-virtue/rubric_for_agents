@@ -20,6 +20,41 @@ python scripts/debug_parse_traces.py `
   --output outputs\debug_parse\workarena_sample.parsed.json
 ```
 
+## Rubric-Ready Cache Parse
+
+Use `scripts/parse_traces_to_cache.py` when you want a standalone parsed dataset for later clustering or rubric extraction experiments. It writes the normal parsed record shape plus:
+
+- `runtime_summary`: reasoning-free, rule-based evidence summary for later rubric extraction.
+- `audit_trace`: source pointers and reduction notes for checking what the parser kept or downweighted.
+- `runtime_summary.state_cards`: candidate entry/operation/final/risk cards built from actions, URLs, UI cues, errors, and screenshot paths.
+
+Example:
+
+```powershell
+python scripts\parse_traces_to_cache.py `
+  --input data\agent-reward-bench\trajectories\workarena.servicenow.all-menu.json `
+  --input-format json `
+  --output data\cache_data\workarena_all_menu.rubric_ready.parsed.json
+```
+
+For AgentRewardBench directories, keep `--agent-reward-observation-policy all` unless you are intentionally making a smaller cache; intermediate state cards need compressed observations from more than the last step.
+
+To mirror the source dataset tree instead of writing one aggregate JSON array:
+
+```powershell
+python scripts\parse_traces_to_cache.py `
+  --input data\agent-reward-bench\trajectories\cleaned\workarena\GenericAgent-Qwen_Qwen2.5-VL-72B-Instruct `
+  --input-format json `
+  --preserve-tree `
+  --output-root data\cache_data
+```
+
+This writes files such as:
+
+```text
+data/cache_data/agent-reward-bench/trajectories/cleaned/workarena/GenericAgent-Qwen_Qwen2.5-VL-72B-Instruct/.../<task>.json
+```
+
 ## Include Chat Messages
 
 The debug script internally loads `chat_messages` when present because some compact AgentRewardBench JSON files store the action history there. By default, the full `chat_messages` object is still removed from the final parsed JSON to keep the output compact.
