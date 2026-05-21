@@ -420,7 +420,7 @@ def build_rubric_ready_views(
     risk_signals = _risk_signals(steps)
 
     runtime_summary = {
-        "schema_version": "rubric_ready_runtime_v1",
+        "schema_version": "rubric_ready_runtime_v2",
         "__record_id__": record_id,
         "task_instruction": task_instruction,
         "outcome": outcome,
@@ -438,14 +438,14 @@ def build_rubric_ready_views(
         "state_cards": state_cards,
         "risk_signals": risk_signals,
         "evidence_policy": {
-            "parser_role": "evidence_recall_not_rubric_judgment",
+            "parser_role": "universal_trajectory_evidence_recall_not_rubric_judgment",
             "runtime_omits": ["full_reasoning", "full_axtree", "full_dom", "full_chat_messages"],
             "runtime_keeps": [
                 "goal_terms",
                 "validation_snapshot",
                 "action_sequence",
                 "final_state_evidence",
-                "candidate_state_cards",
+                "universal_state_cards",
                 "error_and_loop_signals",
                 "screenshot_paths",
                 "source_step_indices",
@@ -477,6 +477,8 @@ def build_rubric_ready_views(
         "state_card_sources": [
             {
                 "state_id": card.get("state_id"),
+                "card_type": card.get("card_type"),
+                "evidence_role": card.get("evidence_role"),
                 "source_steps": card.get("source_steps", []),
                 "source_fields": card.get("source_fields", []),
                 "screenshot_paths": card.get("screenshot_paths", []),
@@ -494,7 +496,7 @@ def build_rubric_ready_views(
     return {"runtime_summary": runtime_summary, "audit_trace": audit_trace}
 
 
-def extract_goal_terms(task_instruction: str) -> List[str]:
+def _legacy_extract_goal_terms(task_instruction: str) -> List[str]:
     text = str(task_instruction or "")
     terms: List[str] = []
 
@@ -555,97 +557,6 @@ def _append_term(terms: List[str], value: Any) -> None:
         return
     if key not in {term.lower() for term in terms}:
         terms.append(text)
-
-
-def build_candidate_state_cards(
-    steps: Sequence[Mapping[str, Any]],
-    goal_terms: Sequence[str],
-    *,
-    outcome: str,
-    validation: Mapping[str, Any],
-) -> List[Dict[str, Any]]:
-    cards: List[Dict[str, Any]] = []
-    clean_steps = [step for step in steps if isinstance(step, Mapping)]
-    if not clean_steps:
-        return cards
-
-    first_card = _state_card_from_steps(
-        "entry_state_candidate",
-        "entry_state",
-        "context_evidence",
-        clean_steps[:1],
-        goal_terms,
-        max_evidence=8,
-    )
-    if first_card:
-        first_card["state_summary"] = "Initial observable state and first action context."
-        cards.append(first_card)
-
-    matched_operation_steps = [
-        step
-        for step in clean_steps[:-1]
-        if _matched_terms(_step_search_text(step), goal_terms)
-    ]
-    for idx, step in enumerate(matched_operation_steps[:5], start=1):
-        card = _state_card_from_steps(
-            f"operation_state_candidate_{idx}",
-            "operation_state",
-            "partial_or_progress_evidence",
-            [step],
-            goal_terms,
-            max_evidence=10,
-        )
-        if card:
-            card["state_summary"] = "Intermediate observable state that matches one or more goal terms."
-            cards.append(card)
-
-    final_card = _state_card_from_steps(
-        "final_state_candidate",
-        "verification_state",
-        "success_or_failure_evidence",
-        clean_steps[-1:],
-        goal_terms,
-        max_evidence=16,
-    )
-    if final_card:
-        reward = validation.get("reward")
-        final_card["state_summary"] = "Final observable state for later rubric verification."
-        final_card["success_prior"] = {
-            "outcome": outcome,
-            "reward": reward,
-            "note": "This is dataset-level supervision, not parser judgment.",
-        }
-        cards.append(final_card)
-
-    risk_steps = [
-        step
-        for step in clean_steps
-        if isinstance(step.get("error_signal"), Mapping) and step["error_signal"].get("has_error")
-    ]
-    repeated = _repeated_action_runs(clean_steps)
-    if risk_steps or repeated:
-        card = {
-            "state_id": "risk_signal_candidate",
-            "stage": "risk_state",
-            "rubric_role": "negative_or_side_effect_evidence",
-            "state_summary": "Errors or repeated actions that may matter for failure/side-effect rubrics.",
-            "matched_goal_terms": [],
-            "evidence_lines": [],
-            "source_steps": [],
-            "source_fields": ["error_signal", "action_signature"],
-            "screenshot_paths": [],
-        }
-        for step in risk_steps[:8]:
-            card["source_steps"].append(step.get("step_index"))
-            error = step.get("error_signal", {})
-            card["evidence_lines"].append(f"step {step.get('step_index')} error: {error.get('message', '')}")
-        for run in repeated[:8]:
-            card["evidence_lines"].append(
-                f"repeated action {run['action']} from step {run['start_step']} to {run['end_step']} ({run['count']} times)"
-            )
-        cards.append(card)
-
-    return cards
 
 
 def _state_card_from_steps(
@@ -872,6 +783,502 @@ def _dedupe_text(values: Sequence[Any]) -> List[str]:
         seen.add(key)
         output.append(text)
     return output
+
+
+_UNIVERSAL_GOAL_TERM_STOPWORDS = _GOAL_TERM_STOPWORDS | {
+    "a",
+    "an",
+    "or",
+    "of",
+    "in",
+    "on",
+    "at",
+    "by",
+    "with",
+    "without",
+    "from",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "being",
+    "has",
+    "have",
+    "had",
+    "do",
+    "does",
+    "did",
+    "not",
+    "that",
+    "this",
+    "these",
+    "those",
+    "which",
+    "what",
+    "when",
+    "who",
+    "whom",
+    "whose",
+    "why",
+    "how",
+    "tell",
+    "find",
+    "input",
+    "image",
+    "below",
+    "local",
+    "path",
+    "posixpath",
+    "url",
+    "https",
+    "http",
+    "me",
+    "my",
+    "our",
+}
+
+
+def extract_goal_terms(task_instruction: str) -> List[str]:
+    """Extract low-noise task terms for evidence ranking only.
+
+    These terms must not be treated as a task parser. They are weak hints used
+    to rank otherwise domain-neutral trajectory evidence.
+    """
+
+    text = str(task_instruction or "")
+    terms: List[str] = []
+
+    for match in re.finditer(r"[\"'“”]([^\"'“”]{3,80})[\"'“”]", text):
+        _append_universal_term(terms, match.group(1))
+
+    for part in re.split(r">|/|->|→", text):
+        clean = re.sub(r"^[^A-Za-z0-9]+|[^A-Za-z0-9]+$", "", part).strip()
+        if (
+            3 <= len(clean) <= 80
+            and any(ch.isupper() for ch in clean)
+            and "\"" not in clean
+            and "'" not in clean
+            and not _looks_like_full_question(clean)
+        ):
+            _append_universal_term(terms, clean)
+
+    for match in re.finditer(r"\b(?:[A-Z][A-Za-z0-9&.-]+)(?:\s+(?:[A-Z][A-Za-z0-9&.-]+)){0,5}\b", text):
+        _append_universal_term(terms, match.group(0))
+
+    for token in re.findall(r"[A-Za-z0-9][A-Za-z0-9_.@-]{2,}", text):
+        lowered = token.lower()
+        if lowered in _UNIVERSAL_GOAL_TERM_STOPWORDS:
+            continue
+        if any(term.lower() == lowered for term in terms):
+            continue
+        if any(lowered in term.lower().split() for term in terms):
+            continue
+        _append_universal_term(terms, token)
+
+    return terms[:24]
+
+
+def _append_universal_term(terms: List[str], value: Any) -> None:
+    text = re.sub(r"\s+", " ", str(value or "").strip())
+    text = re.sub(r"^[\s:;,.>-]+|[\s:;,.>-]+$", "", text)
+    if not text or len(text) < 3:
+        return
+    key = text.lower()
+    if key in _UNIVERSAL_GOAL_TERM_STOPWORDS:
+        return
+    if key.startswith(("http://", "https://", "posixpath(")):
+        return
+    if _looks_like_full_question(text):
+        return
+    if key not in {term.lower() for term in terms}:
+        terms.append(text)
+
+
+def _looks_like_full_question(text: str) -> bool:
+    clean = str(text or "").strip()
+    lowered = clean.lower()
+    if len(clean.split()) >= 8 and lowered.startswith(
+        ("what ", "which ", "how ", "where ", "when ", "who ", "tell ", "find ")
+    ):
+        return True
+    if len(clean.split()) >= 5 and lowered.startswith(
+        ("navigate ", "create ", "order ", "assign ", "filter ", "submit ", "search ")
+    ):
+        return True
+    return clean.endswith("?") and len(clean.split()) >= 6
+
+
+def build_candidate_state_cards(
+    steps: Sequence[Mapping[str, Any]],
+    goal_terms: Sequence[str],
+    *,
+    outcome: str,
+    validation: Mapping[str, Any],
+) -> List[Dict[str, Any]]:
+    """Build domain-neutral state cards from BrowserGym-style trajectories."""
+
+    clean_steps = [step for step in steps if isinstance(step, Mapping)]
+    cards: List[Dict[str, Any]] = [_universal_task_card(goal_terms, outcome=outcome, validation=validation)]
+    if not clean_steps:
+        return cards
+
+    first_card = _universal_state_card_from_steps(
+        "initial_observation",
+        "initial_observation",
+        "initial_context",
+        clean_steps[:1],
+        goal_terms,
+        max_evidence=8,
+    )
+    if first_card:
+        first_card["state_summary"] = "Initial observable state and first action context."
+        cards.append(first_card)
+
+    transition_steps = _select_key_transition_steps(clean_steps, goal_terms, limit=5)
+    for idx, step in enumerate(transition_steps, start=1):
+        card = _universal_state_card_from_steps(
+            f"action_transition_{idx}",
+            "action_transition",
+            "action_and_observation_evidence",
+            [step],
+            goal_terms,
+            max_evidence=10,
+        )
+        if card:
+            card["state_summary"] = (
+                "Key action transition selected by observable change, target text, "
+                "error state, or task-term evidence."
+            )
+            cards.append(card)
+
+    excluded = {id(step) for step in transition_steps}
+    observation_steps = _select_observation_evidence_steps(clean_steps, goal_terms, excluded=excluded, limit=3)
+    for idx, step in enumerate(observation_steps, start=1):
+        card = _universal_state_card_from_steps(
+            f"evidence_observation_{idx}",
+            "evidence_observation",
+            "supporting_observation_evidence",
+            [step],
+            goal_terms,
+            max_evidence=12,
+        )
+        if card:
+            card["state_summary"] = "Intermediate observation with dense visible evidence for later rubric extraction."
+            cards.append(card)
+
+    final_card = _universal_state_card_from_steps(
+        "final_observation",
+        "final_observation",
+        "terminal_state_evidence",
+        clean_steps[-1:],
+        goal_terms,
+        max_evidence=16,
+    )
+    if final_card:
+        final_card["state_summary"] = "Final observable state for later rubric verification."
+        final_card["success_prior"] = {
+            "outcome": outcome,
+            "reward": validation.get("reward"),
+            "note": "This is dataset-level supervision, not parser judgment.",
+        }
+        cards.append(final_card)
+
+    answer_card = _answer_or_output_card(clean_steps, goal_terms)
+    if answer_card:
+        cards.append(answer_card)
+
+    media_card = _media_reference_card(clean_steps)
+    if media_card:
+        cards.append(media_card)
+
+    risk_card = _risk_state_card(clean_steps)
+    if risk_card:
+        cards.append(risk_card)
+
+    return cards[:14]
+
+
+def _universal_task_card(
+    goal_terms: Sequence[str],
+    *,
+    outcome: str,
+    validation: Mapping[str, Any],
+) -> Dict[str, Any]:
+    evidence = []
+    if goal_terms:
+        evidence.append("goal_terms: " + ", ".join(map(str, goal_terms[:12])))
+    return {
+        "state_id": "task_context",
+        "card_type": "task_context",
+        "stage": "task_state",
+        "evidence_role": "task_definition",
+        "rubric_role": "task_definition",
+        "state_summary": "Task instruction hints and dataset-level outcome supervision.",
+        "matched_goal_terms": list(goal_terms[:12]),
+        "evidence_lines": evidence,
+        "source_steps": [],
+        "source_fields": ["task_instruction", "validation"],
+        "screenshot_paths": [],
+        "facets": {"has_task_terms": bool(goal_terms)},
+        "confidence": "candidate",
+        "success_prior": {
+            "outcome": outcome,
+            "reward": validation.get("reward"),
+            "note": "This is dataset-level supervision, not parser judgment.",
+        },
+    }
+
+
+def _universal_state_card_from_steps(
+    state_id: str,
+    card_type: str,
+    evidence_role: str,
+    steps: Sequence[Mapping[str, Any]],
+    goal_terms: Sequence[str],
+    *,
+    max_evidence: int,
+) -> Dict[str, Any]:
+    evidence: List[str] = []
+    source_steps: List[Any] = []
+    screenshots: List[str] = []
+    matched: List[str] = []
+    fields = {"action_signature", "obs_snapshot"}
+    for step in steps:
+        source_steps.append(step.get("step_index"))
+        obs = step.get("obs_snapshot", {})
+        if isinstance(obs, Mapping):
+            screenshot = str(obs.get("screenshot_path", "")).strip()
+            if screenshot:
+                screenshots.append(screenshot)
+        step_evidence = _step_evidence_lines(step, goal_terms, max_lines=max(4, max_evidence))
+        evidence.extend(step_evidence)
+        matched.extend(_matched_terms("\n".join(step_evidence), goal_terms))
+    evidence = _dedupe_text(evidence)[:max_evidence]
+    matched = _dedupe_text(matched)
+    if not evidence and card_type != "initial_observation":
+        return {}
+    return {
+        "state_id": state_id,
+        "card_type": card_type,
+        "stage": card_type,
+        "evidence_role": evidence_role,
+        "rubric_role": evidence_role,
+        "matched_goal_terms": matched,
+        "evidence_lines": evidence,
+        "source_steps": source_steps,
+        "source_fields": sorted(fields),
+        "screenshot_paths": _dedupe_text(screenshots),
+        "facets": _card_facets(steps),
+        "confidence": "candidate",
+    }
+
+
+def _select_key_transition_steps(
+    steps: Sequence[Mapping[str, Any]],
+    goal_terms: Sequence[str],
+    *,
+    limit: int,
+) -> List[Mapping[str, Any]]:
+    scored: List[tuple[int, int, Mapping[str, Any]]] = []
+    previous_url = ""
+    for idx, step in enumerate(steps[:-1]):
+        score = _step_transition_score(step, goal_terms)
+        obs = step.get("obs_snapshot", {})
+        url = str(obs.get("url", "")).strip() if isinstance(obs, Mapping) else ""
+        if url and url != previous_url:
+            score += 5
+        previous_url = url or previous_url
+        if idx < 2:
+            score += 1
+        if score > 0:
+            scored.append((score, idx, step))
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [step for _, _, step in scored[:limit]]
+
+
+def _select_observation_evidence_steps(
+    steps: Sequence[Mapping[str, Any]],
+    goal_terms: Sequence[str],
+    *,
+    excluded: set[int],
+    limit: int,
+) -> List[Mapping[str, Any]]:
+    scored: List[tuple[int, int, Mapping[str, Any]]] = []
+    for idx, step in enumerate(steps[1:-1], start=1):
+        if id(step) in excluded:
+            continue
+        score = _observation_evidence_score(step, goal_terms)
+        if score > 0:
+            scored.append((score, idx, step))
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [step for _, _, step in scored[:limit]]
+
+
+def _step_transition_score(step: Mapping[str, Any], goal_terms: Sequence[str]) -> int:
+    action = step.get("action_signature", {})
+    raw = str(action.get("raw", "")).strip() if isinstance(action, Mapping) else ""
+    action_type = str(action.get("action_type", "")).strip().lower() if isinstance(action, Mapping) else ""
+    target_text = str(action.get("target_text", "")).strip() if isinstance(action, Mapping) else ""
+    score = 0
+    if raw and raw.lower() != "none":
+        score += 2
+    if action_type in {"fill", "select_option", "click", "goto", "press", "send_msg", "send_message"}:
+        score += 2
+    if target_text:
+        score += 4
+    score += len(_matched_terms(_step_search_text(step), goal_terms)) * 4
+    error = step.get("error_signal", {})
+    if isinstance(error, Mapping) and error.get("has_error"):
+        score += 8
+    return score
+
+
+def _observation_evidence_score(step: Mapping[str, Any], goal_terms: Sequence[str]) -> int:
+    lines = _step_evidence_lines(step, goal_terms, max_lines=20)
+    score = min(len(lines), 12)
+    joined = "\n".join(lines).lower()
+    score += len(_matched_terms(joined, goal_terms)) * 3
+    for token in ("table", "grid", "heading", "statictext", "alert", "error", "image", "search result"):
+        if token in joined:
+            score += 1
+    return score
+
+
+def _answer_or_output_card(steps: Sequence[Mapping[str, Any]], goal_terms: Sequence[str]) -> Dict[str, Any]:
+    candidates: List[Mapping[str, Any]] = []
+    for step in steps:
+        action = step.get("action_signature", {})
+        if not isinstance(action, Mapping):
+            continue
+        action_type = str(action.get("action_type", "")).strip().lower()
+        raw = str(action.get("raw", "")).strip()
+        target_text = str(action.get("target_text", "")).strip()
+        if action_type in {"send_msg", "send_message", "answer", "final_answer"} or raw.lower().startswith(
+            ("send_msg", "send_message", "answer", "final_answer")
+        ):
+            evidence = [f"action: {raw}"] if raw else []
+            if target_text:
+                evidence.append(f"answer_text: {target_text}")
+            return {
+                "state_id": "output_or_answer",
+                "card_type": "output_or_answer",
+                "stage": "output_or_answer",
+                "evidence_role": "final_response_evidence",
+                "rubric_role": "final_response_evidence",
+                "state_summary": "Explicit final response or message action emitted by the agent.",
+                "matched_goal_terms": _matched_terms("\n".join(evidence), goal_terms),
+                "evidence_lines": evidence,
+                "source_steps": [step.get("step_index")],
+                "source_fields": ["action_signature"],
+                "screenshot_paths": [],
+                "facets": {"has_explicit_answer": True},
+                "confidence": "candidate",
+            }
+        if target_text:
+            candidates.append(step)
+    return {}
+
+
+def _media_reference_card(steps: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
+    screenshots: List[str] = []
+    image_labels: List[str] = []
+    source_steps: List[Any] = []
+    for step in steps:
+        obs = step.get("obs_snapshot", {})
+        if not isinstance(obs, Mapping):
+            continue
+        screenshot = str(obs.get("screenshot_path", "")).strip()
+        cues = []
+        for key in ("task_relevant_cues", "clickable_options"):
+            value = obs.get(key, [])
+            if isinstance(value, list):
+                cues.extend(str(item) for item in value if str(item).strip())
+        images = [cue for cue in cues if "image" in cue.lower()]
+        if screenshot or images:
+            source_steps.append(step.get("step_index"))
+        if screenshot:
+            screenshots.append(screenshot)
+        image_labels.extend(images[:4])
+    screenshots = _dedupe_text(screenshots)
+    image_labels = _dedupe_text(image_labels)
+    if not screenshots and not image_labels:
+        return {}
+    sampled_screenshots = _dedupe_text(screenshots[:2] + screenshots[-2:])
+    deduped_source_steps: List[Any] = []
+    seen_steps = set()
+    for source_step in source_steps:
+        key = str(source_step)
+        if key in seen_steps:
+            continue
+        seen_steps.add(key)
+        deduped_source_steps.append(source_step)
+    return {
+        "state_id": "media_references",
+        "card_type": "media_reference",
+        "stage": "media_reference",
+        "evidence_role": "visual_or_media_pointer",
+        "rubric_role": "visual_or_media_pointer",
+        "state_summary": "Screenshot paths and image labels retained for optional visual inspection.",
+        "matched_goal_terms": [],
+        "evidence_lines": image_labels[:12],
+        "source_steps": deduped_source_steps[:12],
+        "source_fields": ["obs_snapshot.screenshot_path", "obs_snapshot.task_relevant_cues"],
+        "screenshot_paths": sampled_screenshots,
+        "facets": {"has_screenshot": bool(screenshots), "has_image_label": bool(image_labels)},
+        "confidence": "candidate",
+    }
+
+
+def _risk_state_card(steps: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
+    risk_steps = [
+        step
+        for step in steps
+        if isinstance(step.get("error_signal"), Mapping) and step["error_signal"].get("has_error")
+    ]
+    repeated = _repeated_action_runs(steps)
+    if not risk_steps and not repeated:
+        return {}
+    card = {
+        "state_id": "risk_signals",
+        "card_type": "risk_or_error",
+        "stage": "risk_state",
+        "evidence_role": "negative_or_side_effect_evidence",
+        "rubric_role": "negative_or_side_effect_evidence",
+        "state_summary": "Errors or repeated actions that may matter for failure/side-effect rubrics.",
+        "matched_goal_terms": [],
+        "evidence_lines": [],
+        "source_steps": [],
+        "source_fields": ["error_signal", "action_signature"],
+        "screenshot_paths": [],
+        "facets": {"has_error": bool(risk_steps), "has_repetition": bool(repeated)},
+        "confidence": "candidate",
+    }
+    for step in risk_steps[:8]:
+        card["source_steps"].append(step.get("step_index"))
+        error = step.get("error_signal", {})
+        card["evidence_lines"].append(f"step {step.get('step_index')} error: {error.get('message', '')}")
+    for run in repeated[:8]:
+        card["evidence_lines"].append(
+            f"repeated action {run['action']} from step {run['start_step']} to {run['end_step']} ({run['count']} times)"
+        )
+    return card
+
+
+def _card_facets(steps: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
+    lines: List[str] = []
+    for step in steps:
+        if isinstance(step, Mapping):
+            lines.extend(_step_evidence_lines(step, [], max_lines=30))
+    joined = "\n".join(lines).lower()
+    return {
+        "has_url": "url:" in joined,
+        "has_form_control": any(token in joined for token in ("textbox", "combobox", "checkbox", "button")),
+        "has_table_or_grid": any(token in joined for token in ("table", "grid", "gridcell", "columnheader")),
+        "has_image_reference": "image" in joined,
+        "has_error_text": any(token in joined for token in ("error", "failed", "unexpected", "invalid")),
+    }
 
 
 def infer_outcome(record: Mapping[str, Any]) -> str:
@@ -1219,6 +1626,7 @@ def _record_metadata(record: Mapping[str, Any]) -> Dict[str, Any]:
     existing = record.get("metadata", {})
     if isinstance(existing, Mapping):
         metadata.update(dict(existing))
+    metadata.pop("package_version", None)
     for key, value in record.items():
         if key not in {
             "__record_id__",
@@ -1250,6 +1658,7 @@ def _record_metadata(record: Mapping[str, Any]) -> Dict[str, Any]:
             "is_success",
             "correct",
             "score",
+            "package_version",
         }:
             metadata.setdefault(key, value)
     return metadata

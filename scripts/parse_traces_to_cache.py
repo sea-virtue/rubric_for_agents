@@ -183,19 +183,24 @@ def _attach_cache_source(parsed: Dict[str, Any], input_file: Path) -> None:
     relative = _relative_cache_path(input_file)
     metadata = parsed.setdefault("metadata", {})
     if isinstance(metadata, dict):
-        metadata.setdefault("source_path", str(input_file))
-        metadata.setdefault("relative_source_path", str(relative).replace("\\", "/"))
+        if not metadata.get("source_path"):
+            metadata["source_path"] = str(input_file)
+        if not metadata.get("relative_source_path"):
+            metadata["relative_source_path"] = str(relative).replace("\\", "/")
     audit = parsed.get("audit_trace")
     if isinstance(audit, dict):
         source_metadata = audit.setdefault("source_metadata", {})
         if isinstance(source_metadata, dict):
-            source_metadata.setdefault("source_path", str(input_file))
-            source_metadata.setdefault("relative_source_path", str(relative).replace("\\", "/"))
+            if not source_metadata.get("source_path"):
+                source_metadata["source_path"] = str(input_file)
+            if not source_metadata.get("relative_source_path"):
+                source_metadata["relative_source_path"] = str(relative).replace("\\", "/")
     runtime = parsed.get("runtime_summary")
     if isinstance(runtime, dict):
         runtime.setdefault("source", {})
         if isinstance(runtime["source"], dict):
-            runtime["source"].setdefault("relative_source_path", str(relative).replace("\\", "/"))
+            if not runtime["source"].get("relative_source_path"):
+                runtime["source"]["relative_source_path"] = str(relative).replace("\\", "/")
 
 
 def _iter_input_json_files(path: Path) -> List[Path]:

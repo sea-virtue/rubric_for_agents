@@ -26,7 +26,7 @@ Use `scripts/parse_traces_to_cache.py` when you want a standalone parsed dataset
 
 - `runtime_summary`: reasoning-free, rule-based evidence summary for later rubric extraction.
 - `audit_trace`: source pointers and reduction notes for checking what the parser kept or downweighted.
-- `runtime_summary.state_cards`: candidate entry/operation/final/risk cards built from actions, URLs, UI cues, errors, and screenshot paths.
+- `runtime_summary.state_cards`: universal candidate evidence cards built from the shared trajectory structure, not benchmark-specific domains. Current card types include `task_context`, `initial_observation`, `action_transition`, `evidence_observation`, `final_observation`, `output_or_answer`, `media_reference`, and `risk_or_error`.
 
 Example:
 
