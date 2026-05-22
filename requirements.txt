@@ -1,0 +1,13 @@
+# Core project/runtime dependencies for code under src/.
+# This file is for parsing, task clustering, diagnostics, and the older
+# rubric-mining pipeline client code. It does not install local model servers.
+
+openai
+tenacity
+rich
+pydantic
+httpx
+
+# Optional in code, but recommended for the current workflows.
+PyYAML
+scikit-learn

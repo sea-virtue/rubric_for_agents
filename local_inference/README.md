@@ -30,7 +30,7 @@ embedding model.
 Download Qwen3-Embedding-8B to the ignored `local_inference/models/` directory:
 
 ```bash
-pip install huggingface-hub
+pip install -r local_inference/requirements.txt
 chmod +x local_inference/download_qwen3_embedding.sh
 bash local_inference/download_qwen3_embedding.sh
 ```
@@ -71,14 +71,17 @@ bash local_inference/check_embedding.sh
 Install vLLM in a suitable CUDA environment:
 
 ```bash
-pip install vllm
+pip install -r local_inference/requirements.txt
 ```
+
+If your server already provides a CUDA/PyTorch environment, install the vLLM
+wheel that matches that environment instead of treating this requirements file
+as a universal lock file.
 
 Download the default Qwen3 4B Instruct 2507 model to the ignored
 `local_inference/models/` directory:
 
 ```bash
-pip install huggingface-hub
 chmod +x local_inference/download_hf_model.sh
 bash local_inference/download_hf_model.sh
 ```

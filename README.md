@@ -64,17 +64,22 @@ level. `parse_cache` still reuses stable shared code from `rubric_miner.io` and
 Use Python 3.10+.
 
 ```bash
-pip install openai tenacity rich pydantic
+pip install -r requirements.txt
 ```
 
-Optional dependencies:
+`requirements.txt` covers the project code under `src/` and the shell
+entrypoints under `scripts/`. It does not install local model-serving stacks.
+
+For vLLM or the minimal HF local server, install the local inference
+dependencies in the server environment:
 
 ```bash
-pip install pyyaml scikit-learn
+pip install -r local_inference/requirements.txt
 ```
 
-`pyyaml` is needed for YAML inputs/configs. `scikit-learn` enables DBSCAN; if it
-is missing, clustering falls back to a simple connected-components strategy.
+On shared GPU servers, vLLM and PyTorch are CUDA-sensitive. If the server
+already has a managed CUDA/PyTorch stack, prefer the matching vLLM install used
+by that environment.
 
 ## Local Models
 
@@ -96,7 +101,7 @@ For more reproducible server runs, pre-download models into the ignored
 `local_inference/models/` directory:
 
 ```bash
-pip install huggingface-hub
+pip install -r local_inference/requirements.txt
 chmod +x local_inference/download_hf_model.sh
 
 bash local_inference/download_hf_model.sh
@@ -107,7 +112,8 @@ bash local_inference/start_vllm_qwen.sh
 For vLLM chat plus Qwen3 embeddings and DBSCAN clustering:
 
 ```bash
-pip install huggingface-hub vllm scikit-learn
+pip install -r requirements.txt
+pip install -r local_inference/requirements.txt
 
 chmod +x local_inference/download_qwen3_embedding.sh
 bash local_inference/download_qwen3_embedding.sh

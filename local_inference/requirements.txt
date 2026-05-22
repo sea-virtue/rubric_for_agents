@@ -1,6 +1,26 @@
+# Local inference/server dependencies.
+#
+# This environment is for local_inference/*.sh and local_inference/*.py only.
+# Install the root ../requirements.txt as well when running project code from
+# src/ or scripts/*.sh.
+#
+# vLLM is needed by:
+#   start_vllm_qwen.sh
+#   start_vllm_qwen3_embedding.sh
+#
+# Note: vLLM/torch wheels are CUDA- and platform-sensitive. If your server has
+# a managed CUDA/PyTorch environment, install the matching vLLM build according
+# to that environment instead of blindly reusing this file.
+vllm
+
+# Model downloads.
+huggingface-hub
+
+# Minimal HF OpenAI-compatible fallback server:
+#   start_hf_openai_server.sh
 fastapi
 uvicorn
 torch
 transformers
 sentence-transformers
-huggingface-hub
+accelerate
