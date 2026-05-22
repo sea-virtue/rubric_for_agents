@@ -3,13 +3,24 @@ from __future__ import annotations
 import json
 import statistics
 import sys
+import argparse
 from collections import Counter
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, Optional, Sequence
 
 
-def main() -> int:
-    out_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("outputs/local_qwen3_vllm_full")
+def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Analyze saved mining prompt sizes and auto-shrink behavior.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument("out_dir", nargs="?", type=Path, default=Path("outputs/local_qwen3_vllm_full"))
+    return parser.parse_args(argv)
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    args = parse_args(argv)
+    out_dir = args.out_dir
     path = out_dir / "mining_prompts.json"
     if not path.exists():
         print(f"missing: {path}")

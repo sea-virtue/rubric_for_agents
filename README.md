@@ -29,24 +29,11 @@ are skipped. Writes are atomic via `.tmp` files and rename.
 
 ```text
 src/
-  miner.py                         # CLI entrypoint
-  rubric_miner/
-    cli.py                         # command-line orchestration
-    config.py                      # task config loading
-    dataloader.py                  # CSV/JSON/JSONL/YAML normalization
-    schemas.py                     # Pydantic models
-    llm.py                         # async LLM/embedding calls with retry
-    trace.py                       # trace segmentation and features
-    text.py                        # similarity utilities
-    calibration.py                 # export metadata scores
-    stages/
-      parse.py
-      cluster.py
-      mine.py
-      merge.py
-      generalize.py
-      refine.py
-      export.py
+  parse_cache/                     # active module: raw traces -> parsed cache
+  task_clustering/                 # active module: task embedding + consensus clustering
+  diagnostics/                     # output inspection commands
+  miner.py                         # older full-pipeline CLI entrypoint
+  rubric_miner/                    # older full-pipeline package and shared utilities
 configs/
   example_task.json
   local_qwen3_vllm.json
@@ -59,7 +46,18 @@ local_inference/
   start_vllm_qwen.sh
   start_hf_openai_server.sh
   hf_openai_server.py
+scripts/
+  parse_traces_to_cache.sh         # shell entrypoint for parse_cache
+  cluster_cached_tasks.sh          # shell entrypoint for task_clustering
+  run_local_qwen3_full.sh          # shell entrypoint for the older full pipeline
+docs/
+  parse_traces_to_cache.md
+  cluster_cached_tasks.md
 ```
+
+The current first two modules are intentionally independent at the entrypoint
+level. `parse_cache` still reuses stable shared code from `rubric_miner.io` and
+`rubric_miner.trace`; deeper code movement can wait until the module APIs settle.
 
 ## Install
 

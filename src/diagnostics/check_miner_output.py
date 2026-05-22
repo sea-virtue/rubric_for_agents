@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import argparse
 import json
 import os
-import sys
 from collections import Counter, defaultdict
 from pathlib import Path
+from typing import Optional, Sequence
 
 
 def load_json(path: Path):
@@ -14,8 +15,18 @@ def load_json(path: Path):
         return json.load(handle)
 
 
-def main() -> int:
-    base = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("outputs/local_qwen3_vllm_full")
+def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Summarize Rubric Miner output artifact counts and cluster composition.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument("out_dir", nargs="?", type=Path, default=Path("outputs/local_qwen3_vllm_full"))
+    return parser.parse_args(argv)
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    args = parse_args(argv)
+    base = args.out_dir
     print(f"output_dir: {base}")
     for name in [
         "parsed_traces.json",

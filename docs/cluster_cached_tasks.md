@@ -1,10 +1,12 @@
 # Cluster Cached Tasks
 
-`scripts/cluster_cached_tasks.py` is a standalone clustering module for parsed
+`src/task_clustering/cli.py` is a standalone clustering module for parsed
 trajectory cache files. It reads task instructions from cache JSON files,
 embeds those task texts with an OpenAI-compatible embedding endpoint, runs an
 ensemble of average-linkage hierarchical clusterings, then performs a final
 consensus clustering over the co-clustering matrix.
+
+Use `scripts/cluster_cached_tasks.sh` as the normal shell entrypoint.
 
 It does not call the rubric-mining pipeline stages.
 
@@ -41,7 +43,7 @@ Then run:
 
 ```bash
 export OPENAI_API_KEY="local"
-python scripts/cluster_cached_tasks.py \
+./scripts/cluster_cached_tasks.sh \
   --embedding-base-url http://127.0.0.1:8001/v1 \
   --embedding-model qwen3-embedding-8b
 ```
@@ -49,7 +51,7 @@ python scripts/cluster_cached_tasks.py \
 For a quick local read check without embedding calls:
 
 ```bash
-python scripts/cluster_cached_tasks.py --dry-run --max-records 5
+./scripts/cluster_cached_tasks.sh --dry-run --max-records 5
 ```
 
 ## Important Parameters

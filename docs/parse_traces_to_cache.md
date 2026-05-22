@@ -1,6 +1,6 @@
 # Parse Traces To Cache
 
-`scripts/parse_traces_to_cache.py` is the standalone parsed-cache stage for trajectory data. It reads raw traces, builds compact parsed records, and writes rubric-ready cache files without running clustering or rubric extraction.
+`src/parse_cache/cli.py` is the standalone parsed-cache stage for trajectory data. It reads raw traces, builds compact parsed records, and writes rubric-ready cache files without running clustering or rubric extraction. Use `scripts/parse_traces_to_cache.sh` as the normal shell entrypoint.
 
 The parser keeps the shared trajectory structure as the primary abstraction. `runtime_summary.state_cards` uses universal evidence-card types rather than benchmark-specific domain cards:
 
@@ -18,7 +18,7 @@ The parser keeps the shared trajectory structure as the primary abstraction. `ru
 From the repo root:
 
 ```bash
-python scripts/parse_traces_to_cache.py \
+./scripts/parse_traces_to_cache.sh \
   --input data/agent-reward-bench/trajectories/cleaned \
   --input-format json \
   --preserve-tree \
@@ -40,7 +40,7 @@ data/cache_data/agent-reward-bench/trajectories/cleaned/workarena/.../<task>.jso
 
 ## Shell Script
 
-You can save this as `scripts/parse_cleaned_to_cache.sh`:
+The repo already includes `scripts/parse_traces_to_cache.sh`:
 
 ```bash
 #!/usr/bin/env bash
@@ -49,8 +49,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 export PYTHONDONTWRITEBYTECODE=1
+export PYTHONPATH="${PYTHONPATH:+${PYTHONPATH}:}src"
 
-python scripts/parse_traces_to_cache.py \
+python -m parse_cache.cli \
   --input data/agent-reward-bench/trajectories/cleaned \
   --input-format json \
   --preserve-tree \
@@ -61,8 +62,8 @@ python scripts/parse_traces_to_cache.py \
 Then run:
 
 ```bash
-chmod +x scripts/parse_cleaned_to_cache.sh
-./scripts/parse_cleaned_to_cache.sh
+chmod +x scripts/parse_traces_to_cache.sh
+./scripts/parse_traces_to_cache.sh
 ```
 
 ## Single File Or Aggregate Output
@@ -70,7 +71,7 @@ chmod +x scripts/parse_cleaned_to_cache.sh
 For one file or an aggregate JSON array, omit `--preserve-tree`:
 
 ```bash
-python scripts/parse_traces_to_cache.py \
+./scripts/parse_traces_to_cache.sh \
   --input data/agent-reward-bench/trajectories/cleaned/workarena/GenericAgent-Qwen_Qwen2.5-VL-72B-Instruct/GenericAgent-Qwen_Qwen2.5-VL-72B-Instruct_on_workarena.servicenow/workarena.servicenow.all-menu.json \
   --input-format json \
   --output outputs/debug_parse/workarena_all_menu.parsed.json
@@ -81,7 +82,7 @@ python scripts/parse_traces_to_cache.py \
 Use `--runtime-only` when downstream code only needs `runtime_summary`:
 
 ```bash
-python scripts/parse_traces_to_cache.py \
+./scripts/parse_traces_to_cache.sh \
   --input data/agent-reward-bench/trajectories/cleaned \
   --input-format json \
   --preserve-tree \
