@@ -8,7 +8,7 @@ consensus clustering over the co-clustering matrix.
 
 Use `scripts/cluster_cached_tasks.sh` as the normal shell entrypoint.
 
-It does not call the rubric-mining pipeline stages.
+It only produces task cluster files under `data/cluster`.
 
 ## Default Input And Output
 

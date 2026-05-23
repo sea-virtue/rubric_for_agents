@@ -93,11 +93,13 @@ chmod +x local_inference/start_vllm_qwen.sh
 bash local_inference/start_vllm_qwen.sh
 ```
 
-Then point miner at the server:
+Then use it for rubric extraction:
 
 ```bash
 export OPENAI_API_KEY="local"
-python src/miner.py --config configs/local_qwen3_vllm.json
+./scripts/extract_rubrics_from_clusters.sh \
+  --model qwen3-4b-instruct-2507 \
+  --base-url http://127.0.0.1:8000/v1
 ```
 
 To use a different model, edit `MODEL` and `SERVED_MODEL_NAME` near the top of
@@ -140,13 +142,11 @@ local_inference/start_hf_openai_server.sh
 The HF chat server is meant as a simple fallback. For production throughput,
 prefer vLLM for chat generation.
 
-## Miner Config
+## Project Entry Points
 
-Use `configs/local_qwen3_vllm.json` for vLLM-only chat.
+Use the project shell entrypoints from the repository root:
 
-Use `configs/local_qwen3_vllm_qwen3_embedding_full.json` for the current
-recommended setup: vLLM chat on port 8000 plus Qwen3-Embedding on port 8001 with
-DBSCAN clustering.
-
-Use `configs/local_qwen3_vllm_balanced_debug.json` for a smaller balanced debug
-run.
+```bash
+./scripts/cluster_cached_tasks.sh
+./scripts/extract_rubrics_from_clusters.sh
+```

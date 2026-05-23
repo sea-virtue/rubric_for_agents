@@ -1,4 +1,4 @@
-"""Coarse-to-fine rubric mining package."""
+"""Shared utilities for trajectory parsing, LLM calls, and text processing."""
 
 __all__ = ["__version__"]
 
