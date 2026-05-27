@@ -30,7 +30,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--clusters", type=Path, default=DEFAULT_CLUSTER_FILE)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--model", default=os.getenv("RUBRIC_MODEL", "qwen3-4b-instruct-2507"))
-    parser.add_argument("--base-url", default=os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:8000/v1"))
+    parser.add_argument("--base-url", default=os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:18000/v1"))
     parser.add_argument("--api-key-env", default="OPENAI_API_KEY")
     parser.add_argument("--concurrency", type=int, default=1)
     parser.add_argument("--max-clusters", type=int, default=None)
@@ -43,7 +43,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="Include runtime_summary.action_sequence in prompts. Disabled by default to favor more samples.",
     )
-    parser.add_argument("--max-tokens", type=int, default=4096)
+    parser.add_argument("--max-tokens", type=int, default=2048)
     parser.add_argument("--temperature", type=float, default=0.2)
     parser.add_argument("--refresh", action="store_true", help="Recompute clusters already present in output.")
     parser.add_argument("--dry-run", action="store_true", help="Load clusters/cache and print a prompt preview.")
@@ -352,6 +352,14 @@ def prompt_messages(
                 "what actions demonstrate, what final-state facts confirm, or what omissions indicate failure.\n"
                 "- Do not hard-code instance-specific step numbers, dates, IDs, UUIDs, request numbers, "
                 "prices, names, or record values unless the value is a reusable task-family concept.\n"
+                "- Replace concrete sample values with placeholders such as <series_id>, <target_user>, "
+                "<target_record>, <required_field>, <target_item>, <threshold>, <date_range>, "
+                "<quantity>, <report_title>, <expected_answer>, or <target_url_pattern>.\n"
+                "- Do not copy literal action element IDs like click('834') or fill('a192', ...); describe "
+                "the UI role or intended operation instead, such as clicking the target row, opening the "
+                "filter control, or filling the required field.\n"
+                "- When examples help, write parameterized examples with placeholders rather than values "
+                "from sampled records.\n"
                 "- Use task-parameter language such as task-specified threshold, target record, required field, "
                 "selected item, final answer format, or expected state.\n"
                 "- Include verification_guide for each item so an engineer or verifier can see what to extract "

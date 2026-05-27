@@ -85,7 +85,7 @@ bash local_inference/start_vllm_qwen.sh
 
 ./scripts/extract_rubrics_from_clusters.sh \
   --model qwen3-4b-instruct-2507 \
-  --base-url http://127.0.0.1:8000/v1 \
+  --base-url http://127.0.0.1:18000/v1 \
   --max-records-per-cluster 12 \
   --max-chars-per-record 6000
 ```

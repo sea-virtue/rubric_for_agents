@@ -99,7 +99,7 @@ Then use it for rubric extraction:
 export OPENAI_API_KEY="local"
 ./scripts/extract_rubrics_from_clusters.sh \
   --model qwen3-4b-instruct-2507 \
-  --base-url http://127.0.0.1:8000/v1
+  --base-url http://127.0.0.1:18000/v1
 ```
 
 To use a different model, edit `MODEL` and `SERVED_MODEL_NAME` near the top of
@@ -135,7 +135,7 @@ Run a small direct HF chat server too:
 CHAT_MODEL="Qwen/Qwen3-4B-Instruct-2507" \
 SERVED_CHAT_MODEL_NAME="qwen3-4b-instruct-2507" \
 EMBEDDING_MODEL="" \
-PORT=8000 \
+PORT=18000 \
 local_inference/start_hf_openai_server.sh
 ```
 
