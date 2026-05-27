@@ -15,7 +15,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from rubric_miner.llm import build_client, llm_json_array  # noqa: E402
+from rubric_miner.llm import async_llm_call, build_client, extract_json_array  # noqa: E402
 
 
 DEFAULT_CLUSTER_FILE = Path("data/cluster/task_clusters.json")
@@ -74,14 +74,16 @@ async def main_async(args: argparse.Namespace) -> int:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     output_path = args.output_dir / "cluster_rubrics.json"
     prompt_path = args.output_dir / "rubric_prompts.json"
+    raw_path = args.output_dir / "rubric_raw_outputs.json"
     config_path = args.output_dir / "rubric_extraction_config.json"
 
     existing = [] if args.refresh else load_json_array(output_path)
     prompt_records = [] if args.refresh else load_json_array(prompt_path)
+    raw_records = [] if args.refresh else load_json_array(raw_path)
     done = {
         str(record.get("cluster_id") or record.get("__record_id__"))
         for record in existing
-        if record.get("cluster_id") and not has_error(record)
+        if record.get("cluster_id") and not has_error(record) and record.get("rubrics")
     }
 
     client = build_client(api_key_env=args.api_key_env, base_url=args.base_url)
@@ -112,14 +114,47 @@ async def main_async(args: argparse.Namespace) -> int:
                 upsert(prompt_records, prompt_record, key="cluster_id")
                 write_json(prompt_path, prompt_records)
 
-                raw_items = await llm_json_array(
+                raw_content = await async_llm_call(
                     client,
                     args.model,
                     messages,
                     temperature=args.temperature,
                     max_tokens=args.max_tokens,
                 )
+                raw_record = {
+                    "__record_id__": cluster_id,
+                    "cluster_id": cluster_id,
+                    "cluster_size": group["cluster_size"],
+                    "model": args.model,
+                    "sampled_records": [sample["__record_id__"] for sample in samples],
+                    "raw_output": raw_content,
+                }
+                upsert(raw_records, raw_record, key="cluster_id")
+                write_json(raw_path, raw_records)
+
+                try:
+                    raw_items = extract_json_array(raw_content)
+                except Exception as exc:
+                    excerpt = re.sub(r"\s+", " ", raw_content).strip()[:500]
+                    return {
+                        "__record_id__": cluster_id,
+                        "cluster_id": cluster_id,
+                        "cluster_size": group["cluster_size"],
+                        "skipped": True,
+                        "rubric_error": f"{exc}; output_excerpt={excerpt}",
+                        "rubrics": [],
+                    }
                 rubrics = normalize_rubric_items(raw_items)
+                if not rubrics:
+                    return {
+                        "__record_id__": cluster_id,
+                        "cluster_id": cluster_id,
+                        "cluster_size": group["cluster_size"],
+                        "skipped": True,
+                        "rubric_error": "LLM returned no normalizable rubric items",
+                        "raw_item_count": len(raw_items),
+                        "rubrics": [],
+                    }
                 return {
                     "__record_id__": cluster_id,
                     "cluster_id": cluster_id,
@@ -162,6 +197,7 @@ async def main_async(args: argparse.Namespace) -> int:
         "outputs": {
             "rubrics": str(output_path),
             "prompts": str(prompt_path),
+            "raw_outputs": str(raw_path),
             "config": str(config_path),
         },
     }
@@ -284,11 +320,16 @@ def prompt_messages(
 ) -> List[Dict[str, str]]:
     schema = {
         "dimension": "short capability or failure mode name",
-        "criterion": "observable criterion for evaluating trajectories in this cluster",
-        "positive_evidence": ["what strong trajectories do"],
-        "negative_evidence": ["what weak trajectories do or omit"],
+        "criterion": "family-level observable criterion for evaluating trajectories in this cluster",
+        "positive_evidence": ["general behavior or final-state pattern shown by strong trajectories"],
+        "negative_evidence": ["general behavior or omission pattern shown by weak trajectories"],
         "severity": "low|medium|high",
         "rationale": "why this criterion matters for this cluster",
+        "verification_guide": {
+            "what_to_extract": ["variables, actions, observations, or final-state facts to inspect"],
+            "checks": ["general checks to apply without hard-coding task-specific IDs or values"],
+            "evidence_pattern": "compact pattern that would indicate this criterion is satisfied or violated",
+        },
     }
     return [
         {
@@ -301,9 +342,20 @@ def prompt_messages(
         {
             "role": "user",
             "content": (
-                "Extract concise rubrics for this cluster. Criteria must be observable from "
-                "trajectory evidence, not generic advice. Prefer criteria that can separate "
-                "successful trajectories from failed or weak trajectories.\n\n"
+                "Extract 3-6 concise Level-1 rubrics for this task cluster. A Level-1 rubric "
+                "describes a reusable evaluation criterion for the task family, not a checklist "
+                "for one concrete instance.\n\n"
+                "Requirements:\n"
+                "- Criteria must be observable from trajectory evidence, not generic advice.\n"
+                "- Prefer criteria that separate successful trajectories from failed or weak trajectories.\n"
+                "- Evidence fields must describe recognizable behavior or state patterns, such as "
+                "what actions demonstrate, what final-state facts confirm, or what omissions indicate failure.\n"
+                "- Do not hard-code instance-specific step numbers, dates, IDs, UUIDs, request numbers, "
+                "prices, names, or record values unless the value is a reusable task-family concept.\n"
+                "- Use task-parameter language such as task-specified threshold, target record, required field, "
+                "selected item, final answer format, or expected state.\n"
+                "- Include verification_guide for each item so an engineer or verifier can see what to extract "
+                "and what general checks to apply.\n\n"
                 f"JSON item schema:\n{json.dumps(schema, ensure_ascii=False)}\n\n"
                 f"cluster_id: {group.get('cluster_id')}\n"
                 f"cluster_size: {group.get('cluster_size')}\n\n"
@@ -400,33 +452,216 @@ def render_step(step: Mapping[str, Any]) -> str:
 
 def normalize_rubric_items(raw_items: Sequence[Any]) -> List[Dict[str, Any]]:
     rubrics = []
-    for item in raw_items:
+    for item in iter_rubric_candidates(raw_items):
         if not isinstance(item, Mapping):
             continue
-        criterion = first_text(item, "criterion", "description", "rubric", "rule")
+        criterion = first_text(
+            item,
+            "criterion",
+            "criteria",
+            "description",
+            "rubric",
+            "rule",
+            "requirement",
+            "evaluation_criterion",
+            "success_criterion",
+            "check",
+            "observable_criterion",
+        )
         if not criterion:
             continue
-        severity = first_text(item, "severity", "importance", default="medium").lower()
-        if severity not in {"low", "medium", "high"}:
-            severity = "medium"
-        rubrics.append(
-            {
-                "dimension": first_text(item, "dimension", "category", "capability", default="trajectory_quality"),
-                "criterion": criterion,
-                "positive_evidence": list_field(item, "positive_evidence", "positive", "success_evidence"),
-                "negative_evidence": list_field(item, "negative_evidence", "negative", "failure_evidence"),
-                "severity": severity,
-                "rationale": first_text(item, "rationale", "reason", "why", default=""),
-            }
+        rubric = {
+            "dimension": first_text(
+                item,
+                "dimension",
+                "category",
+                "capability",
+                "name",
+                "title",
+                "failure_mode",
+                default="trajectory_quality",
+            ),
+            "criterion": criterion,
+            "positive_evidence": list_field(
+                item,
+                "positive_evidence",
+                "positive",
+                "success_evidence",
+                "positive_examples",
+                "strong_evidence",
+                "what_strong_trajectories_do",
+            ),
+            "negative_evidence": list_field(
+                item,
+                "negative_evidence",
+                "negative",
+                "failure_evidence",
+                "negative_examples",
+                "weak_evidence",
+                "what_weak_trajectories_do",
+            ),
+            "severity": normalize_severity(first_text(item, "severity", "importance", "priority", default="medium")),
+            "rationale": first_text(item, "rationale", "reason", "why", "justification", default=""),
+        }
+        evidence = item.get("evidence")
+        if isinstance(evidence, Mapping):
+            if not rubric["positive_evidence"]:
+                rubric["positive_evidence"] = list_field(evidence, "positive", "positive_evidence", "success")
+            if not rubric["negative_evidence"]:
+                rubric["negative_evidence"] = list_field(evidence, "negative", "negative_evidence", "failure")
+        verification_guide = normalize_verification_guide(
+            item.get("verification_guide")
+            or item.get("verification")
+            or item.get("verification_protocol")
+            or item.get("how_to_verify")
         )
+        if verification_guide:
+            rubric["verification_guide"] = verification_guide
+        rubrics.append(rubric)
     return rubrics
+
+
+def iter_rubric_candidates(raw_items: Sequence[Any]) -> Iterable[Any]:
+    for item in raw_items:
+        yield from unwrap_rubric_candidate(item)
+
+
+def unwrap_rubric_candidate(value: Any, depth: int = 0) -> Iterable[Any]:
+    if depth > 3:
+        yield value
+        return
+    if isinstance(value, list):
+        for item in value:
+            yield from unwrap_rubric_candidate(item, depth + 1)
+        return
+    if not isinstance(value, Mapping):
+        yield value
+        return
+
+    nested_keys = (
+        "rubrics",
+        "rubric_items",
+        "items",
+        "criteria",
+        "evaluation_criteria",
+        "signals",
+        "discriminative_signals",
+        "data",
+    )
+    yielded_nested = False
+    for key in nested_keys:
+        nested = value.get(key)
+        if isinstance(nested, list):
+            yielded_nested = True
+            for item in nested:
+                if isinstance(item, str):
+                    merged = dict(value)
+                    merged.pop(key, None)
+                    merged["criterion"] = item
+                    yield merged
+                else:
+                    yield from unwrap_rubric_candidate(item, depth + 1)
+    if yielded_nested and not first_text(value, "criterion", "description", "rubric", "rule", "requirement"):
+        return
+    yield value
+
+
+def normalize_severity(value: str) -> str:
+    lowered = str(value or "").strip().lower()
+    if lowered in {"high", "critical", "severe", "major", "important"}:
+        return "high"
+    if lowered in {"low", "minor", "small", "optional"}:
+        return "low"
+    return "medium"
+
+
+def normalize_verification_guide(value: Any) -> Any:
+    if value in (None, ""):
+        return None
+    if isinstance(value, Mapping):
+        normalized: Dict[str, Any] = {}
+        what_to_extract = list_field(
+            value,
+            "what_to_extract",
+            "what_to_look_for",
+            "variables",
+            "evidence_to_extract",
+            "signals_to_inspect",
+        )
+        checks = list_field(
+            value,
+            "checks",
+            "verification_steps",
+            "verification_checks",
+            "method_steps",
+            "how_to_check",
+        )
+        evidence_pattern = first_text(
+            value,
+            "evidence_pattern",
+            "example_pattern",
+            "pattern",
+            "observable_pattern",
+            default="",
+        )
+        verification_method = first_text(
+            value,
+            "verification_method",
+            "method",
+            "verifier",
+            default="",
+        )
+        if what_to_extract:
+            normalized["what_to_extract"] = what_to_extract
+        if checks:
+            normalized["checks"] = checks
+        if evidence_pattern:
+            normalized["evidence_pattern"] = evidence_pattern
+        if verification_method:
+            normalized["verification_method"] = verification_method
+        alias_keys = {
+            "what_to_extract",
+            "what_to_look_for",
+            "variables",
+            "evidence_to_extract",
+            "signals_to_inspect",
+            "checks",
+            "verification_steps",
+            "verification_checks",
+            "method_steps",
+            "how_to_check",
+            "evidence_pattern",
+            "example_pattern",
+            "pattern",
+            "observable_pattern",
+            "verification_method",
+            "method",
+            "verifier",
+        }
+        for key, item in value.items():
+            if item in (None, "", []):
+                continue
+            if str(key) in alias_keys:
+                continue
+            normalized.setdefault(str(key), list_field(value, str(key)) if isinstance(item, list) else item)
+        return normalized or None
+    if isinstance(value, list):
+        checks = [stringify_field_value(item) for item in value if stringify_field_value(item)]
+        return {"checks": checks} if checks else None
+    return str(value).strip()
 
 
 def first_text(item: Mapping[str, Any], *keys: str, default: str = "") -> str:
     for key in keys:
         value = item.get(key)
         if value not in (None, ""):
-            return str(value).strip()
+            if isinstance(value, list):
+                for part in value:
+                    text = stringify_field_value(part)
+                    if text:
+                        return text
+                continue
+            return stringify_field_value(value)
     return default
 
 
@@ -436,9 +671,21 @@ def list_field(item: Mapping[str, Any], *keys: str) -> List[str]:
         if value in (None, ""):
             continue
         if isinstance(value, list):
-            return [str(part).strip() for part in value if str(part).strip()]
-        return [str(value).strip()]
+            return [stringify_field_value(part) for part in value if stringify_field_value(part)]
+        if isinstance(value, Mapping):
+            return [stringify_field_value(part) for part in value.values() if stringify_field_value(part)]
+        return [stringify_field_value(value)]
     return []
+
+
+def stringify_field_value(value: Any) -> str:
+    if value in (None, ""):
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, (int, float, bool)):
+        return str(value).strip()
+    return json.dumps(value, ensure_ascii=False, default=str)
 
 
 def parse_cluster_ids(value: str) -> List[str]:
