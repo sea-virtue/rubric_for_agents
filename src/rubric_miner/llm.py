@@ -62,27 +62,95 @@ def extract_json_array(text: str) -> List[Any]:
     if fenced:
         cleaned = fenced.group(1).strip()
 
+    parsed = _loads_json_array(cleaned)
+    if parsed is not None:
+        return parsed
+
+    repaired = _repair_missing_object_braces(cleaned)
+    repair_variants = [repaired, _drop_one_trailing_object_brace(repaired)]
+    for variant in repair_variants:
+        if variant != cleaned:
+            parsed = _loads_json_array(variant)
+            if parsed is not None:
+                return parsed
+
+    candidates: List[List[Any]] = []
+    for payload in (cleaned, *repair_variants):
+        decoder = json.JSONDecoder()
+        for match in re.finditer(r"\[", payload):
+            try:
+                parsed_any, _ = decoder.raw_decode(payload[match.start() :])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed_any, list):
+                candidates.append(parsed_any)
+    if candidates:
+        candidates.sort(key=_json_array_score, reverse=True)
+        return candidates[0]
+    raise ValueError("LLM output does not contain a valid JSON array")
+
+
+def _loads_json_array(text: str) -> Optional[List[Any]]:
     try:
-        parsed = json.loads(cleaned)
+        parsed = json.loads(text)
         if isinstance(parsed, list):
             return parsed
         if isinstance(parsed, dict):
-            for key in ("rubrics", "items", "signals", "discriminative_signals", "data"):
+            for key in (
+                "rubrics",
+                "rubric_items",
+                "items",
+                "criteria",
+                "evaluation_criteria",
+                "signals",
+                "discriminative_signals",
+                "data",
+            ):
                 value = parsed.get(key)
                 if isinstance(value, list):
                     return value
     except json.JSONDecodeError:
-        pass
+        return None
+    return None
 
-    decoder = json.JSONDecoder()
-    for match in re.finditer(r"\[", cleaned):
-        try:
-            parsed, _ = decoder.raw_decode(cleaned[match.start() :])
-        except json.JSONDecodeError:
-            continue
-        if isinstance(parsed, list):
-            return parsed
-    raise ValueError("LLM output does not contain a valid JSON array")
+
+def _repair_missing_object_braces(text: str) -> str:
+    # Some local models emit [{"dimension": ...}, "dimension": ...] between
+    # otherwise valid rubric objects. Repair the common missing "{" separator.
+    repaired = text.replace("\\'", "'")
+    repaired = re.sub(
+        r"}\s*,\s*\"(dimension|criterion|criteria|category|capability|requirement|evaluation_criterion)\"\s*:",
+        r'},{"\1":',
+        repaired,
+    )
+    return repaired
+
+
+def _drop_one_trailing_object_brace(text: str) -> str:
+    return re.sub(r"}(\s*\]\s*)$", r"\1", text)
+
+
+def _json_array_score(items: Sequence[Any]) -> int:
+    score = 0
+    rubric_keys = {
+        "dimension",
+        "criterion",
+        "criteria",
+        "description",
+        "rubric",
+        "rule",
+        "requirement",
+        "evaluation_criterion",
+        "success_criterion",
+        "check",
+    }
+    for item in items:
+        if isinstance(item, Mapping):
+            score += 10
+            score += len(rubric_keys.intersection(item.keys()))
+        elif isinstance(item, list):
+            score += max(0, _json_array_score(item) - 5)
+    return score
 
 
 @retry(
