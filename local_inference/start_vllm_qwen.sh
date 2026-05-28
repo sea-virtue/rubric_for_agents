@@ -6,7 +6,7 @@ set -euo pipefail
 MODEL="${MODEL:-local_inference/models/qwen3-4b-instruct-2507}"
 SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-qwen3-4b-instruct-2507}"
 HOST="${HOST:-0.0.0.0}"
-PORT="${PORT:-18000}"
+PORT="${PORT:-28000}"
 MAX_MODEL_LEN="${MAX_MODEL_LEN:-65536}"
 GPU_MEMORY_UTILIZATION="${GPU_MEMORY_UTILIZATION:-0.90}"
 HF_HOME="${HF_HOME:-$(pwd)/local_inference/hf_cache}"

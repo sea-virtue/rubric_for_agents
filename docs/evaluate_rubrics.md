@@ -51,8 +51,14 @@ Full run:
 ```bash
 ./scripts/evaluate_rubrics.sh \
   --max-records-per-cluster 4 \
+  --max-tokens 2048 \
   --concurrency 1
 ```
+
+The judge stage is resumable by default. Without `--refresh`, existing
+successful records in `trajectory_rubric_scores.json` are skipped, while records
+with `judge_error` are retried. Use `--refresh` only when you want to recompute
+all selected scores from scratch.
 
 Outputs:
 

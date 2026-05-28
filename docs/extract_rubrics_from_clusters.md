@@ -26,7 +26,7 @@ Run extraction:
 ```bash
 ./scripts/extract_rubrics_from_clusters.sh \
   --model qwen3-4b-instruct-2507 \
-  --base-url http://127.0.0.1:18000/v1 \
+  --base-url http://127.0.0.1:28000/v1 \
   --max-records-per-cluster 12 \
   --max-chars-per-record 6000 \
   --max-tokens 2048 \

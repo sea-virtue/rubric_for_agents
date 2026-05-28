@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_URL="${BASE_URL:-http://127.0.0.1:18000/v1}"
+BASE_URL="${BASE_URL:-http://127.0.0.1:28000/v1}"
 MODEL="${MODEL:-qwen3-4b-instruct-2507}"
 API_KEY="${OPENAI_API_KEY:-local}"
 

@@ -51,14 +51,14 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--clusters", type=Path, default=DEFAULT_CLUSTERS)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--model", default=os.getenv("RUBRIC_EVAL_MODEL", os.getenv("RUBRIC_MODEL", "qwen3-4b-instruct-2507")))
-    parser.add_argument("--base-url", default=os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:18000/v1"))
+    parser.add_argument("--base-url", default=os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:28000/v1"))
     parser.add_argument("--api-key-env", default="OPENAI_API_KEY")
     parser.add_argument("--concurrency", type=int, default=1)
     parser.add_argument("--max-clusters", type=int, default=None)
     parser.add_argument("--cluster-ids", default="", help="Comma-separated cluster ids to evaluate.")
     parser.add_argument("--max-records-per-cluster", type=int, default=4)
     parser.add_argument("--max-chars-per-record", type=int, default=6000)
-    parser.add_argument("--max-tokens", type=int, default=1024)
+    parser.add_argument("--max-tokens", type=int, default=2048)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument(
         "--include-label-fields",
@@ -124,19 +124,30 @@ async def main_async(args: argparse.Namespace) -> int:
     done = {
         str(record.get("__record_id__"))
         for record in score_records
-        if record.get("__record_id__") and not record.get("judge_error")
+        if record.get("__record_id__") and record.get("weighted_score") is not None and not record.get("judge_error")
     }
 
     client = build_client(api_key_env=args.api_key_env, base_url=args.base_url)
     semaphore = asyncio.Semaphore(max(1, args.concurrency))
 
     jobs = []
+    requested_jobs = 0
+    already_done_jobs = 0
     for rubric_record in selected:
         for member in sample_cluster_members(rubric_record, record_index, max_records=args.max_records_per_cluster):
+            requested_jobs += 1
             job_id = score_record_id(rubric_record, member)
             if job_id in done:
+                already_done_jobs += 1
                 continue
             jobs.append((rubric_record, member))
+    print(
+        "judge_resume:"
+        f" requested={requested_jobs}"
+        f" already_done={already_done_jobs}"
+        f" pending={len(jobs)}"
+        f" refresh={args.refresh}"
+    )
 
     async def process_job(rubric_record: Mapping[str, Any], member: Mapping[str, Any]) -> Dict[str, Any]:
         async with semaphore:
@@ -430,7 +441,8 @@ def judge_prompt_messages(
             "role": "system",
             "content": (
                 "You evaluate one agent trajectory against a fixed list of rubrics. "
-                "Return only a strict JSON array with one item per rubric, in the same order."
+                "Return only a strict JSON array with one item per rubric, in the same order. "
+                "Do not include markdown, explanations, or text before or after the array."
             ),
         },
         {
@@ -438,7 +450,8 @@ def judge_prompt_messages(
             "content": (
                 "Score each rubric against the trajectory evidence. Use 0.0 for absent or violated, "
                 "0.5 for partial/ambiguous, and 1.0 for clearly satisfied. Do not judge the rubric's "
-                "quality here; judge whether this trajectory satisfies it.\n\n"
+                "quality here; judge whether this trajectory satisfies it. Keep evidence and rationale "
+                "short, preferably under 20 words each.\n\n"
                 f"JSON item schema:\n{json.dumps(schema, ensure_ascii=False)}\n\n"
                 f"cluster_id: {rubric_record.get('cluster_id')}\n"
                 f"RUBRICS:\n{json.dumps(rubrics, ensure_ascii=False, indent=2)}\n\n"
@@ -607,7 +620,15 @@ def build_summary(
     score_records: Sequence[Mapping[str, Any]],
     selected_rubrics: Sequence[Mapping[str, Any]],
 ) -> Dict[str, Any]:
-    valid_scores = [record for record in score_records if record.get("weighted_score") is not None and not record.get("judge_error")]
+    selected_cluster_ids = {str(record.get("cluster_id")) for record in selected_rubrics}
+    selected_score_records = [
+        record for record in score_records if str(record.get("cluster_id")) in selected_cluster_ids
+    ]
+    valid_scores = [
+        record
+        for record in selected_score_records
+        if record.get("weighted_score") is not None and not record.get("judge_error")
+    ]
     labels = [record.get("label") for record in valid_scores]
     scores = [float(record.get("weighted_score", 0.0)) for record in valid_scores]
     global_auc = auc_from_scores(labels, scores)
@@ -645,7 +666,7 @@ def build_summary(
         },
         "judge": {
             "evaluated_records": len(valid_scores),
-            "judge_errors": sum(1 for record in score_records if record.get("judge_error")),
+            "judge_errors": sum(1 for record in selected_score_records if record.get("judge_error")),
             "global_auc": global_auc,
             "success_count": sum(1 for label in labels if label == 1),
             "failure_count": sum(1 for label in labels if label == 0),

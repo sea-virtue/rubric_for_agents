@@ -30,7 +30,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--clusters", type=Path, default=DEFAULT_CLUSTER_FILE)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--model", default=os.getenv("RUBRIC_MODEL", "qwen3-4b-instruct-2507"))
-    parser.add_argument("--base-url", default=os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:18000/v1"))
+    parser.add_argument("--base-url", default=os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:28000/v1"))
     parser.add_argument("--api-key-env", default="OPENAI_API_KEY")
     parser.add_argument("--concurrency", type=int, default=1)
     parser.add_argument("--max-clusters", type=int, default=None)
