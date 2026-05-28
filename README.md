@@ -8,6 +8,7 @@ raw trajectories
   -> parsed cache
   -> task embedding clusters
   -> cluster-level rubric extraction
+  -> rubric quality evaluation
 ```
 
 The old full pipeline has been removed. The active flow now reads explicit
@@ -21,12 +22,14 @@ src/
   parse_cache/         # raw traces -> parsed/cache summaries
   task_clustering/     # task_instruction embeddings -> data/cluster
   rubric_extraction/   # data/cluster + parsed cache -> data/rubric
+  rubric_evaluation/   # data/rubric + clusters/cache -> data/rubric_eval
   rubric_miner/        # shared parser/LLM/text utilities
 
 scripts/
   parse_traces_to_cache.sh
   cluster_cached_tasks.sh
   extract_rubrics_from_clusters.sh
+  evaluate_rubrics.sh
 
 local_inference/
   start_vllm_qwen.sh
@@ -38,6 +41,7 @@ docs/
   parse_traces_to_cache.md
   cluster_cached_tasks.md
   extract_rubrics_from_clusters.md
+  evaluate_rubrics.md
 ```
 
 `local_inference/` is only for local model serving. Python implementation code
@@ -113,4 +117,12 @@ Rubrics:
 data/rubric/cluster_rubrics.json
 data/rubric/rubric_prompts.json
 data/rubric/rubric_extraction_config.json
+```
+
+Rubric evaluation:
+
+```text
+data/rubric_eval/rubric_static_audit.json
+data/rubric_eval/trajectory_rubric_scores.json
+data/rubric_eval/rubric_eval_summary.json
 ```

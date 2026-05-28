@@ -7,6 +7,7 @@ src/
   parse_cache/       # module 1: raw/cache trajectory parsing entrypoint
   task_clustering/   # module 2: embedding + hierarchical consensus clustering
   rubric_extraction/ # module 3: clusters + parsed cache -> rubrics
+  rubric_evaluation/ # module 4: independent rubric quality checks
   rubric_miner/      # shared parser/LLM/text utilities
 ```
 
