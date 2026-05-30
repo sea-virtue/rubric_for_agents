@@ -1,11 +1,12 @@
 # Rubric For Agents
 
-This project currently focuses on the first three independent modules for
-mining rubrics from agent trajectories:
+This project currently focuses on independent, inspectable modules for mining
+rubrics from agent trajectories:
 
 ```text
 raw trajectories
   -> parsed cache
+  -> positive/negative cache pairs
   -> task embedding clusters
   -> cluster-level rubric extraction
   -> rubric quality evaluation
@@ -20,6 +21,7 @@ independently.
 ```text
 src/
   parse_cache/         # raw traces -> parsed/cache summaries
+  pair_cache/          # parsed/cache summaries -> positive/negative pair cache
   task_clustering/     # task_instruction embeddings -> data/cluster
   rubric_extraction/   # data/cluster + parsed cache -> data/rubric
   rubric_evaluation/   # data/rubric + clusters/cache -> data/rubric_eval
@@ -27,6 +29,7 @@ src/
 
 scripts/
   parse_traces_to_cache.sh
+  build_cache_pairs.sh
   cluster_cached_tasks.sh
   extract_rubrics_from_clusters.sh
   evaluate_rubrics.sh
@@ -39,6 +42,7 @@ local_inference/
 
 docs/
   parse_traces_to_cache.md
+  build_cache_pairs.md
   cluster_cached_tasks.md
   extract_rubrics_from_clusters.md
   evaluate_rubrics.md
@@ -72,6 +76,12 @@ Parse raw trajectories into cache:
 ./scripts/parse_traces_to_cache.sh
 ```
 
+Build positive/negative pair cache data:
+
+```bash
+./scripts/build_cache_pairs.sh
+```
+
 Start the embedding server and cluster cached tasks:
 
 ```bash
@@ -100,6 +110,16 @@ Parsed cache:
 
 ```text
 data/cache_data/...
+```
+
+Positive/negative pair cache:
+
+```text
+data/cache_pair_data/pair_index.json
+data/cache_pair_data/pair_report.json
+data/cache_pair_data/pair_summary.json
+data/cache_pair_data/<domain>/<jobname>/pair.json
+data/cache_pair_data/<domain>/<jobname>/<jobnamewithmodelname>.json
 ```
 
 Task clusters:
