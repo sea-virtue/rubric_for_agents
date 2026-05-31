@@ -73,5 +73,5 @@ mean score margin.
 - `--max-pairs`: process only the first N selected pairs.
 - `--max-chars-per-response`: cap state-card payload size per response.
 - `--concurrency`: concurrent judge requests.
-- `--refresh`: recompute pairs already present in output.
+- `--refresh`: recompute selected pairs already present in output and upsert them.
 - `--dry-run`: print a prompt preview without calling a model.

@@ -132,5 +132,5 @@ intended for the later embedding, MCR/deduplication, and merge stage.
 - `--max-pairs`: process only the first N selected pairs.
 - `--max-chars-per-response`: cap state-card payload size per response.
 - `--preview-chars`: characters of each dry-run prompt to print.
-- `--refresh`: recompute pairs already present in output.
+- `--refresh`: recompute selected pairs already present in output and upsert them.
 - `--dry-run`: print prompt previews without calling a model.

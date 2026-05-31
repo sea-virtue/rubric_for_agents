@@ -34,14 +34,14 @@ async def extract_pair_rubrics(
     raw_path = output_dir / "pair_rubric_raw_outputs.json"
     config_path = output_dir / "pair_rubric_extraction_config.json"
 
-    existing = [] if refresh else load_json_array(output_path)
-    prompt_records = [] if refresh else load_json_array(prompt_path)
-    raw_records = [] if refresh else load_json_array(raw_path)
+    existing = load_json_array(output_path)
+    prompt_records = load_json_array(prompt_path)
+    raw_records = load_json_array(raw_path)
     done = {
         str(record.get("pair_id") or record.get("__record_id__"))
         for record in existing
         if record.get("pair_id") and not has_error(record) and record.get("rubrics")
-    }
+    } if not refresh else set()
 
     client = build_client(api_key_env=api_key_env, base_url=base_url)
     semaphore = asyncio.Semaphore(max(1, concurrency))

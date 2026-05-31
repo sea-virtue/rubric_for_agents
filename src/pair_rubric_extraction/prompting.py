@@ -125,7 +125,7 @@ def limit_response_payload(response: Mapping[str, Any], *, max_chars: int) -> Di
     output: Dict[str, Any] = {"state_cards": []}
     if not isinstance(state_cards, list) or max_chars <= 0:
         return output
-    for card in state_cards:
+    for card in prioritized_state_cards(state_cards):
         if not isinstance(card, Mapping):
             continue
         candidate_cards = [*output["state_cards"], card]
@@ -136,6 +136,34 @@ def limit_response_payload(response: Mapping[str, Any], *, max_chars: int) -> Di
     if len(json.dumps(output, ensure_ascii=False)) > max_chars:
         output["state_cards"] = [shrink_card(card) for card in output["state_cards"]]
     return output
+
+
+def prioritized_state_cards(cards: List[Any]) -> List[Any]:
+    indexed = list(enumerate(cards))
+    indexed.sort(key=lambda item: (state_card_priority(item[1]), item[0]))
+    return [card for _, card in indexed]
+
+
+def state_card_priority(card: Any) -> int:
+    if not isinstance(card, Mapping):
+        return 99
+    state_id = str(card.get("state_id", "")).lower()
+    role = str(card.get("rubric_role", card.get("evidence_role", ""))).lower()
+    if state_id == "task_context" or role == "task_definition":
+        return 0
+    if state_id == "final_observation" or role == "terminal_state_evidence":
+        return 1
+    if state_id == "output_or_answer" or role == "final_response_evidence":
+        return 2
+    if state_id == "risk_signals" or role == "negative_or_side_effect_evidence":
+        return 3
+    if state_id == "initial_observation" or role == "initial_context":
+        return 4
+    if state_id.startswith("action_transition"):
+        return 5
+    if state_id.startswith("evidence_observation"):
+        return 6
+    return 7
 
 
 def shrink_card(card: Mapping[str, Any]) -> Dict[str, Any]:
