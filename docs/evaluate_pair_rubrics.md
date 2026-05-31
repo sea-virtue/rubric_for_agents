@@ -16,6 +16,10 @@ than `response_1`. In the current pair cache, `response_0` is the selected
 positive trajectory and `response_1` is the selected negative trajectory, but
 that fact is not shown in the prompt.
 
+The judge prompt treats terminal-state and final-answer evidence as primary for
+task completion. Intermediate evidence should not receive full credit when the
+final state shows no result, an error, or an incomplete answer.
+
 ## Run
 
 Preview one judge prompt without calling a model:
@@ -30,7 +34,8 @@ Run a one-pair smoke test:
 ./scripts/evaluate_pair_rubrics.sh \
   --model "gpt-5.4-mini" \
   --max-pairs 1 \
-  --concurrency 1
+  --concurrency 1 \
+  --no-truncate
 ```
 
 Run all available pair rubrics:
@@ -38,7 +43,8 @@ Run all available pair rubrics:
 ```bash
 ./scripts/evaluate_pair_rubrics.sh \
   --model "gpt-5.4-mini" \
-  --concurrency 1
+  --concurrency 1 \
+  --no-truncate
 ```
 
 For an OpenAI-compatible transit API:
@@ -49,7 +55,8 @@ export OPENAI_API_KEY="your_api_key"
 
 ./scripts/evaluate_pair_rubrics.sh \
   --model "gpt-5.4-mini" \
-  --concurrency 1
+  --concurrency 1 \
+  --no-truncate
 ```
 
 ## Outputs
@@ -65,6 +72,23 @@ data/pair_rubric_eval/pair_rubric_eval_config.json
 `pair_rubric_eval_summary.json` contains aggregate accuracy, ties, errors, and
 mean score margin.
 
+To compare prompt truncation strategies without overwriting an existing run,
+write to different output directories:
+
+```bash
+./scripts/evaluate_pair_rubrics.sh \
+  --model "gpt-5.4-mini" \
+  --card-order source \
+  --output-dir data/pair_rubric_eval_source_order \
+  --concurrency 1
+
+./scripts/evaluate_pair_rubrics.sh \
+  --model "gpt-5.4-mini" \
+  --card-order priority \
+  --output-dir data/pair_rubric_eval_priority_order \
+  --concurrency 1
+```
+
 ## Important Parameters
 
 - `--pair-rubrics`: mined pair-rubric file.
@@ -72,6 +96,8 @@ mean score margin.
 - `--pair-ids`: comma-separated pair ids to process first/only.
 - `--max-pairs`: process only the first N selected pairs.
 - `--max-chars-per-response`: cap state-card payload size per response.
+- `--no-truncate`: send all cleaned state cards for each response. Recommended only with a large-context API model.
+- `--card-order`: `priority` keeps terminal/output cards early before truncation; `source` preserves parser order.
 - `--concurrency`: concurrent judge requests.
 - `--refresh`: recompute selected pairs already present in output and upsert them.
 - `--dry-run`: print a prompt preview without calling a model.

@@ -40,7 +40,18 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--concurrency", type=int, default=1)
     parser.add_argument("--max-pairs", type=int, default=None)
     parser.add_argument("--pair-ids", default="", help="Comma-separated pair ids to process first/only.")
-    parser.add_argument("--max-chars-per-response", type=int, default=12000)
+    parser.add_argument("--max-chars-per-response", type=int, default=80000)
+    parser.add_argument(
+        "--no-truncate",
+        action="store_true",
+        help="Send all cleaned state cards for each response. Use only with a sufficiently large-context API model.",
+    )
+    parser.add_argument(
+        "--card-order",
+        choices=("priority", "source"),
+        default="priority",
+        help="State-card ordering for prompt truncation. priority keeps terminal/output cards early; source preserves parser order.",
+    )
     parser.add_argument("--max-tokens", type=int, default=2048)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--refresh", action="store_true", help="Recompute pairs already present in output.")
@@ -65,7 +76,12 @@ async def main_async(args: argparse.Namespace) -> int:
         print(f"pairs: {args.pairs}")
         print(f"selected_pairs: {len(selected)}")
         rubric_record, pair_record = selected[0]
-        messages = judge_prompt_messages(rubric_record, pair_record, max_chars_per_response=args.max_chars_per_response)
+        messages = judge_prompt_messages(
+            rubric_record,
+            pair_record,
+            max_chars_per_response=effective_max_chars_per_response(args),
+            card_order=args.card_order,
+        )
         print(f"- {rubric_record.get('pair_id')}")
         print(messages[1]["content"][: max(0, args.preview_chars)])
         return 0
@@ -97,7 +113,12 @@ async def main_async(args: argparse.Namespace) -> int:
                     return dict(record)
         async with semaphore:
             try:
-                messages = judge_prompt_messages(rubric_record, pair_record, max_chars_per_response=args.max_chars_per_response)
+                messages = judge_prompt_messages(
+                    rubric_record,
+                    pair_record,
+                    max_chars_per_response=effective_max_chars_per_response(args),
+                    card_order=args.card_order,
+                )
                 prompt_record = {"__record_id__": pair_id, "pair_id": pair_id, "messages": messages}
                 upsert(prompt_records, prompt_record, key="pair_id")
                 write_json(prompt_path, prompt_records)
@@ -153,6 +174,8 @@ async def main_async(args: argparse.Namespace) -> int:
             "max_pairs": args.max_pairs,
             "pair_ids": parse_csv(args.pair_ids),
             "max_chars_per_response": args.max_chars_per_response,
+            "no_truncate": bool(args.no_truncate),
+            "card_order": args.card_order,
             "max_tokens": args.max_tokens,
             "temperature": args.temperature,
             "num_selected_pairs": len(selected),
@@ -194,7 +217,8 @@ def judge_prompt_messages(
     rubric_record: Mapping[str, Any],
     pair_record: Mapping[str, Any],
     *,
-    max_chars_per_response: int,
+    max_chars_per_response: int | None,
+    card_order: str,
 ) -> List[Dict[str, str]]:
     rubrics = []
     for idx, rubric in enumerate(rubric_record.get("rubrics") or [], start=1):
@@ -211,7 +235,7 @@ def judge_prompt_messages(
                 "verification_guide": rubric.get("verification_guide", {}),
             }
         )
-    responses = pair_eval_responses(pair_record, max_chars_per_response=max_chars_per_response)
+    responses = pair_eval_responses(pair_record, max_chars_per_response=max_chars_per_response, card_order=card_order)
     schema = {
         "response_id": "response_0",
         "rubric_scores": [
@@ -236,6 +260,10 @@ def judge_prompt_messages(
             "content": (
                 "Score each response against the rubrics using only the provided state_cards. "
                 "Do not infer from response order, hidden labels, validation, model identity, or agent identity. "
+                "Terminal state and final-answer evidence are primary for task completion. If intermediate evidence "
+                "conflicts with the terminal state or final answer, the terminal/final evidence wins. Do not award "
+                "full credit for a transient intermediate state when the final state shows no result, an error, or an "
+                "incomplete answer. "
                 "Use score 1.0 for clearly satisfied, 0.5 for partial/ambiguous, and 0.0 for absent or violated. "
                 "Set total_score to the sum of rubric scores.\n\n"
                 f"JSON item schema:\n{json.dumps(schema, ensure_ascii=False)}\n\n"
@@ -247,7 +275,7 @@ def judge_prompt_messages(
     ]
 
 
-def pair_eval_responses(pair_record: Mapping[str, Any], *, max_chars_per_response: int) -> List[Dict[str, Any]]:
+def pair_eval_responses(pair_record: Mapping[str, Any], *, max_chars_per_response: int | None, card_order: str) -> List[Dict[str, Any]]:
     responses = []
     selected_records = pair_record.get("selected_records", [])
     if isinstance(selected_records, list):
@@ -258,6 +286,7 @@ def pair_eval_responses(pair_record: Mapping[str, Any], *, max_chars_per_respons
             response = limit_response_payload(
                 {"state_cards": state_cards_from_record(record)},
                 max_chars=max_chars_per_response,
+                card_order=card_order,
             )
             responses.append({"response_id": f"response_{idx}", **response})
     return responses
@@ -361,6 +390,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return asyncio.run(main_async(args))
     except KeyboardInterrupt:
         return 130
+
+
+def effective_max_chars_per_response(args: argparse.Namespace) -> int | None:
+    return None if args.no_truncate else args.max_chars_per_response
 
 
 if __name__ == "__main__":

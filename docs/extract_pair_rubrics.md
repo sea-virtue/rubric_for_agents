@@ -52,6 +52,9 @@ script loads the selected parsed records, keeps only cleaned
 `runtime_summary.state_cards` as `responses`, and builds `validation` for the
 two trajectories. The prompt explicitly tells the model not to turn reward,
 label, response index, model identity, or agent identity into rubric content.
+It also tells the model to treat terminal-state and final-answer evidence as
+primary for task completion: transient intermediate evidence should not define
+a success rubric when the final state contradicts it.
 
 ## Run
 
@@ -86,7 +89,8 @@ the transit provider:
 bash ./scripts/extract_pair_rubrics.sh \
   --model "gpt-5.4-mini" \
   --max-pairs 1 \
-  --concurrency 1
+  --concurrency 1 \
+  --no-truncate
 ```
 
 After the one-pair smoke test succeeds, remove `--max-pairs 1` to run all
@@ -95,7 +99,8 @@ available pairs:
 ```bash
 bash ./scripts/extract_pair_rubrics.sh \
   --model "gpt-5.4-mini" \
-  --concurrency 1
+  --concurrency 1 \
+  --no-truncate
 ```
 
 You can also pass the endpoint explicitly instead of using `OPENAI_BASE_URL`:
@@ -104,7 +109,8 @@ You can also pass the endpoint explicitly instead of using `OPENAI_BASE_URL`:
 bash ./scripts/extract_pair_rubrics.sh \
   --base-url "https://api.gpt.ge/v1/" \
   --model "gpt-5.4-mini" \
-  --concurrency 1
+  --concurrency 1 \
+  --no-truncate
 ```
 
 `--concurrency` controls how many pair requests are sent at the same time. Use
@@ -130,7 +136,8 @@ intended for the later embedding, MCR/deduplication, and merge stage.
 - `--output-dir`: pair-rubric output directory.
 - `--pair-ids`: comma-separated pair ids to process first/only.
 - `--max-pairs`: process only the first N selected pairs.
-- `--max-chars-per-response`: cap state-card payload size per response.
+- `--max-chars-per-response`: cap state-card payload size per response. Default is `80000`.
+- `--no-truncate`: send all cleaned state cards for each response. Recommended only with a large-context API model.
 - `--preview-chars`: characters of each dry-run prompt to print.
 - `--refresh`: recompute selected pairs already present in output and upsert them.
 - `--dry-run`: print prompt previews without calling a model.

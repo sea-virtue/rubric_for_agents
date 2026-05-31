@@ -7,7 +7,7 @@ from .io import load_selected_cache_record
 from .sanitize import clean_prompt_payload
 
 
-def prompt_messages(pair: Mapping[str, Any], *, max_chars_per_response: int) -> List[Dict[str, str]]:
+def prompt_messages(pair: Mapping[str, Any], *, max_chars_per_response: int | None) -> List[Dict[str, str]]:
     schema = {
         "dimension": "short capability or failure-mode name",
         "criterion": "observable criterion that explains why the successful trajectory is better",
@@ -16,6 +16,7 @@ def prompt_messages(pair: Mapping[str, Any], *, max_chars_per_response: int) -> 
         "severity": "low|medium|high",
         "rationale": "why this criterion separates success from failure for this task",
         "verification_guide": {
+            "primary_evidence_stage": "terminal_state|final_answer|process|side_effect",
             "what_to_extract": ["observable facts to inspect from future trajectories"],
             "checks": ["general checks to apply without model/agent/source metadata"],
             "evidence_pattern": "compact success/failure pattern using placeholders where needed",
@@ -41,13 +42,18 @@ def prompt_messages(pair: Mapping[str, Any], *, max_chars_per_response: int) -> 
                 "- Treat validation as supervision for which response succeeded or failed; do not turn reward, "
                 "label, response index, model identity, or agent identity into rubric content.\n"
                 "- Criteria must be observable from trajectory evidence, not generic advice.\n"
+                "- Terminal state and final-answer evidence are primary when judging task completion. "
+                "If intermediate evidence conflicts with the terminal state or final answer, the terminal/final evidence wins.\n"
+                "- Do not create criteria that can be satisfied only by a transient intermediate state unless the task "
+                "explicitly evaluates process behavior. For most web/navigation tasks, require the final visible state "
+                "or final user-facing answer to support completion.\n"
                 "- Prefer discriminative criteria visible in the state cards: correct target identification, "
                 "required field/value completion, final answer correctness, avoided side effects, or failure omissions.\n"
                 "- Do not hard-code instance-specific step numbers, element IDs, UUIDs, request numbers, prices, "
                 "names, dates, or record values unless they are core task parameters. Use placeholders such as "
                 "<target_record>, <required_field>, <expected_answer>, <date_range>, <threshold>, or <target_url>.\n"
                 "- Evidence fields should summarize reusable patterns, not copy long raw observations.\n"
-                "- Include verification_guide for each item.\n\n"
+                "- Include verification_guide for each item, including primary_evidence_stage.\n\n"
                 f"JSON item schema:\n{json.dumps(schema, ensure_ascii=False)}\n\n"
                 f"PAIR_INPUT:\n{json.dumps(pair_payload, ensure_ascii=False, indent=2)}"
             ),
@@ -55,7 +61,7 @@ def prompt_messages(pair: Mapping[str, Any], *, max_chars_per_response: int) -> 
     ]
 
 
-def pair_prompt_payload(pair: Mapping[str, Any], *, max_chars_per_response: int) -> Dict[str, Any]:
+def pair_prompt_payload(pair: Mapping[str, Any], *, max_chars_per_response: int | None) -> Dict[str, Any]:
     clean_responses = []
     validation = []
     selected_records = pair.get("selected_records", [])
@@ -120,12 +126,18 @@ def compact_validation(validation: Mapping[str, Any]) -> Dict[str, Any]:
     return {key: validation.get(key) for key in keep if validation.get(key) not in (None, "")}
 
 
-def limit_response_payload(response: Mapping[str, Any], *, max_chars: int) -> Dict[str, Any]:
+def limit_response_payload(response: Mapping[str, Any], *, max_chars: int | None, card_order: str = "priority") -> Dict[str, Any]:
     state_cards = response.get("state_cards", [])
     output: Dict[str, Any] = {"state_cards": []}
-    if not isinstance(state_cards, list) or max_chars <= 0:
+    if not isinstance(state_cards, list):
         return output
-    for card in prioritized_state_cards(state_cards):
+    ordered_cards = prioritized_state_cards(state_cards) if card_order == "priority" else state_cards
+    if max_chars is None:
+        output["state_cards"] = [card for card in ordered_cards if isinstance(card, Mapping)]
+        return output
+    if max_chars <= 0:
+        return output
+    for card in ordered_cards:
         if not isinstance(card, Mapping):
             continue
         candidate_cards = [*output["state_cards"], card]

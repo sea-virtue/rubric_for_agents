@@ -32,7 +32,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--concurrency", type=int, default=1)
     parser.add_argument("--max-pairs", type=int, default=None)
     parser.add_argument("--pair-ids", default="", help="Comma-separated pair ids to process first/only.")
-    parser.add_argument("--max-chars-per-response", type=int, default=16000)
+    parser.add_argument("--max-chars-per-response", type=int, default=80000)
+    parser.add_argument(
+        "--no-truncate",
+        action="store_true",
+        help="Send all cleaned state cards for each response. Use only with a sufficiently large-context API model.",
+    )
     parser.add_argument("--max-tokens", type=int, default=2048)
     parser.add_argument("--temperature", type=float, default=0.2)
     parser.add_argument("--refresh", action="store_true", help="Recompute pairs already present in output.")
@@ -54,7 +59,7 @@ async def main_async(args: argparse.Namespace) -> int:
         print(f"pairs: {args.pairs}")
         print(f"selected_pairs: {len(pair_records)}")
         for pair in pair_records[:3]:
-            messages = prompt_messages(pair, max_chars_per_response=args.max_chars_per_response)
+            messages = prompt_messages(pair, max_chars_per_response=effective_max_chars_per_response(args))
             print(f"- {pair.get('pair_id')}")
             print(messages[1]["content"][: max(0, args.preview_chars)])
             print("---")
@@ -70,7 +75,7 @@ async def main_async(args: argparse.Namespace) -> int:
         concurrency=args.concurrency,
         max_pairs=args.max_pairs,
         pair_ids=args.pair_ids,
-        max_chars_per_response=args.max_chars_per_response,
+        max_chars_per_response=effective_max_chars_per_response(args),
         max_tokens=args.max_tokens,
         temperature=args.temperature,
         refresh=args.refresh,
@@ -83,6 +88,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return asyncio.run(main_async(args))
     except KeyboardInterrupt:
         return 130
+
+
+def effective_max_chars_per_response(args: argparse.Namespace) -> int | None:
+    return None if args.no_truncate else args.max_chars_per_response
 
 
 if __name__ == "__main__":

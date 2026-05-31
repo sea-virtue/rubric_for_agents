@@ -97,7 +97,8 @@ Preview or extract pair-level rubrics:
 
 ./scripts/extract_pair_rubrics.sh \
   --base-url http://127.0.0.1:28000/v1 \
-  --concurrency 2
+  --concurrency 2 \
+  --no-truncate
 ```
 
 Evaluate whether pair-level rubrics rank positive trajectories above negative
@@ -108,7 +109,8 @@ trajectories:
 
 ./scripts/evaluate_pair_rubrics.sh \
   --base-url http://127.0.0.1:28000/v1 \
-  --concurrency 1
+  --concurrency 1 \
+  --no-truncate
 ```
 
 Start the embedding server and cluster cached tasks:
