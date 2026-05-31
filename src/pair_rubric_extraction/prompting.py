@@ -1,0 +1,152 @@
+from __future__ import annotations
+
+import json
+from typing import Any, Dict, List, Mapping
+
+from .io import load_selected_cache_record
+from .sanitize import clean_prompt_payload
+
+
+def prompt_messages(pair: Mapping[str, Any], *, max_chars_per_response: int) -> List[Dict[str, str]]:
+    schema = {
+        "dimension": "short capability or failure-mode name",
+        "criterion": "observable criterion that explains why the successful trajectory is better",
+        "positive_evidence": ["state/action/final-answer pattern from the successful response"],
+        "negative_evidence": ["state/action/final-answer pattern from the failed response"],
+        "severity": "low|medium|high",
+        "rationale": "why this criterion separates success from failure for this task",
+        "verification_guide": {
+            "what_to_extract": ["observable facts to inspect from future trajectories"],
+            "checks": ["general checks to apply without model/agent/source metadata"],
+            "evidence_pattern": "compact success/failure pattern using placeholders where needed",
+        },
+    }
+    pair_payload = pair_prompt_payload(pair, max_chars_per_response=max_chars_per_response)
+    return [
+        {
+            "role": "system",
+            "content": (
+                "You extract pair-level evaluation rubrics from one task and two agent trajectory summaries. "
+                "Return only a strict JSON array. Do not use markdown, prose, or a wrapper object."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                "Extract 2-5 concise pair-level rubrics that explain why the validated successful trajectory "
+                "is better than the failed trajectory for this exact task. These are candidate rubrics that "
+                "will later be embedded, deduplicated, and merged across tasks.\n\n"
+                "Requirements:\n"
+                "- Use only the query, responses[].state_cards, and validation shown below.\n"
+                "- Treat validation as supervision for which response succeeded or failed; do not turn reward, "
+                "label, response index, model identity, or agent identity into rubric content.\n"
+                "- Criteria must be observable from trajectory evidence, not generic advice.\n"
+                "- Prefer discriminative criteria visible in the state cards: correct target identification, "
+                "required field/value completion, final answer correctness, avoided side effects, or failure omissions.\n"
+                "- Do not hard-code instance-specific step numbers, element IDs, UUIDs, request numbers, prices, "
+                "names, dates, or record values unless they are core task parameters. Use placeholders such as "
+                "<target_record>, <required_field>, <expected_answer>, <date_range>, <threshold>, or <target_url>.\n"
+                "- Evidence fields should summarize reusable patterns, not copy long raw observations.\n"
+                "- Include verification_guide for each item.\n\n"
+                f"JSON item schema:\n{json.dumps(schema, ensure_ascii=False)}\n\n"
+                f"PAIR_INPUT:\n{json.dumps(pair_payload, ensure_ascii=False, indent=2)}"
+            ),
+        },
+    ]
+
+
+def pair_prompt_payload(pair: Mapping[str, Any], *, max_chars_per_response: int) -> Dict[str, Any]:
+    clean_responses = []
+    validation = []
+    selected_records = pair.get("selected_records", [])
+    if isinstance(selected_records, list) and len(selected_records) >= 2:
+        for idx, selected in enumerate(selected_records[:2]):
+            if not isinstance(selected, Mapping):
+                continue
+            record = load_selected_cache_record(selected)
+            clean_responses.append(
+                limit_response_payload(
+                    {"state_cards": state_cards_from_record(record)},
+                    max_chars=max_chars_per_response,
+                )
+            )
+            validation.append(validation_from_record(record, selected=selected, response_index=idx))
+    else:
+        responses = pair.get("responses", [])
+        if isinstance(responses, list):
+            for response in responses[:2]:
+                response_payload = clean_prompt_payload(response if isinstance(response, Mapping) else {})
+                clean_responses.append(limit_response_payload(response_payload, max_chars=max_chars_per_response))
+        pair_validation = pair.get("validation", [])
+        validation = clean_prompt_payload(pair_validation if isinstance(pair_validation, list) else [])
+
+    return {
+        "query": str(pair.get("query") or "").strip(),
+        "responses": clean_responses,
+        "validation": clean_prompt_payload(validation if isinstance(validation, list) else []),
+    }
+
+
+def state_cards_from_record(record: Mapping[str, Any]) -> List[Dict[str, Any]]:
+    runtime = record.get("runtime_summary")
+    cards = runtime.get("state_cards", []) if isinstance(runtime, Mapping) else []
+    if not isinstance(cards, list):
+        return []
+    cleaned = []
+    for card in cards:
+        if isinstance(card, Mapping):
+            cleaned_card = clean_prompt_payload(card)
+            if cleaned_card:
+                cleaned.append(cleaned_card)
+    return cleaned
+
+
+def validation_from_record(record: Mapping[str, Any], *, selected: Mapping[str, Any], response_index: int) -> Dict[str, Any]:
+    runtime = record.get("runtime_summary")
+    validation = runtime.get("validation") if isinstance(runtime, Mapping) else None
+    if not isinstance(validation, Mapping):
+        validation = record.get("validation")
+    output = compact_validation(validation if isinstance(validation, Mapping) else {})
+    outcome = selected.get("outcome") or (runtime.get("outcome") if isinstance(runtime, Mapping) else record.get("outcome"))
+    if outcome not in (None, ""):
+        output["outcome"] = outcome
+    output["pair_role"] = selected.get("pair_role", "")
+    output["response_index"] = response_index
+    return output
+
+
+def compact_validation(validation: Mapping[str, Any]) -> Dict[str, Any]:
+    keep = ("reward", "raw_reward", "n_steps", "terminated", "truncated", "has_error", "outcome")
+    return {key: validation.get(key) for key in keep if validation.get(key) not in (None, "")}
+
+
+def limit_response_payload(response: Mapping[str, Any], *, max_chars: int) -> Dict[str, Any]:
+    state_cards = response.get("state_cards", [])
+    output: Dict[str, Any] = {"state_cards": []}
+    if not isinstance(state_cards, list) or max_chars <= 0:
+        return output
+    for card in state_cards:
+        if not isinstance(card, Mapping):
+            continue
+        candidate_cards = [*output["state_cards"], card]
+        candidate = {"state_cards": candidate_cards}
+        if len(json.dumps(candidate, ensure_ascii=False)) > max_chars and output["state_cards"]:
+            break
+        output["state_cards"].append(card)
+    if len(json.dumps(output, ensure_ascii=False)) > max_chars:
+        output["state_cards"] = [shrink_card(card) for card in output["state_cards"]]
+    return output
+
+
+def shrink_card(card: Mapping[str, Any]) -> Dict[str, Any]:
+    keep = ("state_id", "card_type", "stage", "evidence_role", "rubric_role", "state_summary", "matched_goal_terms", "evidence_lines", "facets")
+    output: Dict[str, Any] = {}
+    for key in keep:
+        value = card.get(key)
+        if value in (None, "", [], {}):
+            continue
+        if key == "evidence_lines" and isinstance(value, list):
+            output[key] = [str(item)[:500] for item in value[:10] if str(item).strip()]
+        else:
+            output[key] = value
+    return output

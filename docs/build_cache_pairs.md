@@ -92,7 +92,8 @@ receives `label_rank=2`.
 The response text is rendered from `runtime_summary` by default. It includes
 validation, final-state evidence, state cards, and risk signals. Add
 `--include-action-sequence` if the pairwise rubric miner needs explicit action
-order.
+order. Pair-level rubric prompts may apply their own cleaning layer without
+changing this cache/provenance format.
 
 ## Report Files
 

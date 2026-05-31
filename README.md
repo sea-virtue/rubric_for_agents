@@ -7,6 +7,7 @@ rubrics from agent trajectories:
 raw trajectories
   -> parsed cache
   -> positive/negative cache pairs
+  -> pair-level rubric extraction
   -> task embedding clusters
   -> cluster-level rubric extraction
   -> rubric quality evaluation
@@ -22,6 +23,7 @@ independently.
 src/
   parse_cache/         # raw traces -> parsed/cache summaries
   pair_cache/          # parsed/cache summaries -> positive/negative pair cache
+  pair_rubric_extraction/ # pair cache -> pair-level candidate rubrics
   task_clustering/     # task_instruction embeddings -> data/cluster
   rubric_extraction/   # data/cluster + parsed cache -> data/rubric
   rubric_evaluation/   # data/rubric + clusters/cache -> data/rubric_eval
@@ -30,6 +32,7 @@ src/
 scripts/
   parse_traces_to_cache.sh
   build_cache_pairs.sh
+  extract_pair_rubrics.sh
   cluster_cached_tasks.sh
   extract_rubrics_from_clusters.sh
   evaluate_rubrics.sh
@@ -43,6 +46,7 @@ local_inference/
 docs/
   parse_traces_to_cache.md
   build_cache_pairs.md
+  extract_pair_rubrics.md
   cluster_cached_tasks.md
   extract_rubrics_from_clusters.md
   evaluate_rubrics.md
@@ -80,6 +84,16 @@ Build positive/negative pair cache data:
 
 ```bash
 ./scripts/build_cache_pairs.sh
+```
+
+Preview or extract pair-level rubrics:
+
+```bash
+./scripts/extract_pair_rubrics.sh --dry-run --max-pairs 2
+
+./scripts/extract_pair_rubrics.sh \
+  --base-url http://127.0.0.1:28000/v1 \
+  --concurrency 2
 ```
 
 Start the embedding server and cluster cached tasks:
@@ -120,6 +134,14 @@ data/cache_pair_data/pair_report.json
 data/cache_pair_data/pair_summary.json
 data/cache_pair_data/<domain>/<jobname>/pair.json
 data/cache_pair_data/<domain>/<jobname>/<jobnamewithmodelname>.json
+```
+
+Pair-level rubrics:
+
+```text
+data/pair_rubric/pair_rubrics.json
+data/pair_rubric/pair_rubric_prompts.json
+data/pair_rubric/pair_rubric_extraction_config.json
 ```
 
 Task clusters:

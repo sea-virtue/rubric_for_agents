@@ -6,9 +6,10 @@ The active modules are organized by pipeline responsibility:
 src/
   parse_cache/       # module 1: raw/cache trajectory parsing entrypoint
   pair_cache/        # module 2: parsed cache -> positive/negative pair cache
-  task_clustering/   # module 3: embedding + hierarchical consensus clustering
-  rubric_extraction/ # module 4: clusters + parsed cache -> rubrics
-  rubric_evaluation/ # module 5: independent rubric quality checks
+  pair_rubric_extraction/ # module 3: pair cache -> pair-level candidate rubrics
+  task_clustering/   # module 4: embedding + hierarchical consensus clustering
+  rubric_extraction/ # module 5: clusters + parsed cache -> rubrics
+  rubric_evaluation/ # module 6: independent rubric quality checks
   rubric_miner/      # shared parser/LLM/text utilities
 ```
 
