@@ -38,7 +38,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="Send all cleaned state cards for each response. Use only with a sufficiently large-context API model.",
     )
-    parser.add_argument("--max-tokens", type=int, default=2048)
+    parser.add_argument("--max-tokens", type=int, default=4096)
     parser.add_argument("--temperature", type=float, default=0.2)
     parser.add_argument("--refresh", action="store_true", help="Recompute pairs already present in output.")
     parser.add_argument("--dry-run", action="store_true", help="Load pairs and print prompt previews without calling a model.")

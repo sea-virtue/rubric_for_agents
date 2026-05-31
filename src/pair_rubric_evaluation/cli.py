@@ -52,7 +52,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         default="priority",
         help="State-card ordering for prompt truncation. priority keeps terminal/output cards early; source preserves parser order.",
     )
-    parser.add_argument("--max-tokens", type=int, default=2048)
+    parser.add_argument("--max-tokens", type=int, default=4096)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--refresh", action="store_true", help="Recompute pairs already present in output.")
     parser.add_argument("--dry-run", action="store_true", help="Print one judge prompt preview without calling a model.")

@@ -138,6 +138,7 @@ intended for the later embedding, MCR/deduplication, and merge stage.
 - `--max-pairs`: process only the first N selected pairs.
 - `--max-chars-per-response`: cap state-card payload size per response. Default is `80000`.
 - `--no-truncate`: send all cleaned state cards for each response. Recommended only with a large-context API model.
+- `--max-tokens`: maximum rubric-miner output tokens. Default is `4096`.
 - `--preview-chars`: characters of each dry-run prompt to print.
 - `--refresh`: recompute selected pairs already present in output and upsert them.
 - `--dry-run`: print prompt previews without calling a model.

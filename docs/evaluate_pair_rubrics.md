@@ -97,6 +97,7 @@ write to different output directories:
 - `--max-pairs`: process only the first N selected pairs.
 - `--max-chars-per-response`: cap state-card payload size per response.
 - `--no-truncate`: send all cleaned state cards for each response. Recommended only with a large-context API model.
+- `--max-tokens`: maximum judge output tokens. Default is `4096`.
 - `--card-order`: `priority` keeps terminal/output cards early before truncation; `source` preserves parser order.
 - `--concurrency`: concurrent judge requests.
 - `--refresh`: recompute selected pairs already present in output and upsert them.
