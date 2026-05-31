@@ -4,6 +4,18 @@
 constructs a cleaned prompt payload, and asks a chat model to extract
 pair-level candidate rubrics. It does not rewrite the pair cache itself.
 
+Implementation is split across:
+
+```text
+src/pair_rubric_extraction/
+  cli.py       # command-line entrypoint, dry-run preview, orchestration
+  paths.py     # default paths
+  io.py        # pair-cache loading, pair selection, selected-record loading, JSON writes
+  sanitize.py  # prompt-only metadata/noise filtering
+  prompting.py # cleaned pair prompt construction
+  runner.py    # chat-model calls and rubric artifact writing
+```
+
 The miner prompt uses only:
 
 ```json

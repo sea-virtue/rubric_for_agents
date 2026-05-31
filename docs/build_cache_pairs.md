@@ -6,6 +6,17 @@ to pairwise rubric mining.
 
 Use `scripts/build_cache_pairs.sh` as the normal shell entrypoint.
 
+Implementation is split across:
+
+```text
+src/pair_cache/
+  cli.py      # command-line entrypoint and orchestration
+  paths.py    # default paths
+  loader.py   # parsed-cache file discovery and candidate loading
+  builder.py  # grouping, outcome inference, pair sampling, response rendering
+  writer.py   # output files and selected parsed-record copies
+```
+
 ## Default Input And Output
 
 Input:
