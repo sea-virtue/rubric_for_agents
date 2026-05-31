@@ -8,6 +8,7 @@ raw trajectories
   -> parsed cache
   -> positive/negative cache pairs
   -> pair-level rubric extraction
+  -> pair-level rubric discrimination evaluation
   -> task embedding clusters
   -> cluster-level rubric extraction
   -> rubric quality evaluation
@@ -24,6 +25,7 @@ src/
   parse_cache/         # raw traces -> parsed/cache summaries
   pair_cache/          # parsed/cache summaries -> positive/negative pair cache
   pair_rubric_extraction/ # pair cache -> pair-level candidate rubrics
+  pair_rubric_evaluation/ # pair rubrics + pair cache -> pairwise discrimination scores
   task_clustering/     # task_instruction embeddings -> data/cluster
   rubric_extraction/   # data/cluster + parsed cache -> data/rubric
   rubric_evaluation/   # data/rubric + clusters/cache -> data/rubric_eval
@@ -33,6 +35,7 @@ scripts/
   parse_traces_to_cache.sh
   build_cache_pairs.sh
   extract_pair_rubrics.sh
+  evaluate_pair_rubrics.sh
   cluster_cached_tasks.sh
   extract_rubrics_from_clusters.sh
   evaluate_rubrics.sh
@@ -47,6 +50,7 @@ docs/
   parse_traces_to_cache.md
   build_cache_pairs.md
   extract_pair_rubrics.md
+  evaluate_pair_rubrics.md
   cluster_cached_tasks.md
   extract_rubrics_from_clusters.md
   evaluate_rubrics.md
@@ -96,6 +100,17 @@ Preview or extract pair-level rubrics:
   --concurrency 2
 ```
 
+Evaluate whether pair-level rubrics rank positive trajectories above negative
+trajectories:
+
+```bash
+./scripts/evaluate_pair_rubrics.sh --dry-run --max-pairs 1
+
+./scripts/evaluate_pair_rubrics.sh \
+  --base-url http://127.0.0.1:28000/v1 \
+  --concurrency 1
+```
+
 Start the embedding server and cluster cached tasks:
 
 ```bash
@@ -142,6 +157,14 @@ Pair-level rubrics:
 data/pair_rubric/pair_rubrics.json
 data/pair_rubric/pair_rubric_prompts.json
 data/pair_rubric/pair_rubric_extraction_config.json
+```
+
+Pair-level rubric evaluation:
+
+```text
+data/pair_rubric_eval/pair_rubric_pair_scores.json
+data/pair_rubric_eval/pair_rubric_eval_summary.json
+data/pair_rubric_eval/pair_rubric_eval_config.json
 ```
 
 Task clusters:

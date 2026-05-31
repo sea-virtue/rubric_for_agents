@@ -69,6 +69,49 @@ Extract rubrics:
   --concurrency 2
 ```
 
+## OpenAI-Compatible Transit API
+
+For a transit API or any OpenAI-compatible endpoint, keep the API key out of
+the repository and put it in environment variables on the server:
+
+```bash
+export OPENAI_BASE_URL="https://api.gpt.ge/v1/"
+export OPENAI_API_KEY="your_api_key"
+```
+
+The chat-completions API requires a model name, so pass the model supported by
+the transit provider:
+
+```bash
+bash ./scripts/extract_pair_rubrics.sh \
+  --model "gpt-5.4-mini" \
+  --max-pairs 1 \
+  --concurrency 1
+```
+
+After the one-pair smoke test succeeds, remove `--max-pairs 1` to run all
+available pairs:
+
+```bash
+bash ./scripts/extract_pair_rubrics.sh \
+  --model "gpt-5.4-mini" \
+  --concurrency 1
+```
+
+You can also pass the endpoint explicitly instead of using `OPENAI_BASE_URL`:
+
+```bash
+bash ./scripts/extract_pair_rubrics.sh \
+  --base-url "https://api.gpt.ge/v1/" \
+  --model "gpt-5.4-mini" \
+  --concurrency 1
+```
+
+`--concurrency` controls how many pair requests are sent at the same time. Use
+`--concurrency 1` for the safest transit-API run; increase it only if the
+provider's rate limits are stable. Successful pair outputs are cached, so a
+later run skips pairs that already have rubrics unless `--refresh` is used.
+
 ## Outputs
 
 ```text

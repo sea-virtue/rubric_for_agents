@@ -7,9 +7,10 @@ src/
   parse_cache/       # module 1: raw/cache trajectory parsing entrypoint
   pair_cache/        # module 2: parsed cache -> positive/negative pair cache
   pair_rubric_extraction/ # module 3: pair cache -> pair-level candidate rubrics
-  task_clustering/   # module 4: embedding + hierarchical consensus clustering
-  rubric_extraction/ # module 5: clusters + parsed cache -> rubrics
-  rubric_evaluation/ # module 6: independent rubric quality checks
+  pair_rubric_evaluation/ # module 4: pair rubrics -> positive/negative discrimination scores
+  task_clustering/   # module 5: embedding + hierarchical consensus clustering
+  rubric_extraction/ # module 6: clusters + parsed cache -> rubrics
+  rubric_evaluation/ # module 7: independent rubric quality checks
   rubric_miner/      # shared parser/LLM/text utilities
 ```
 
@@ -47,3 +48,7 @@ pair_rubric_extraction/
   prompting.py # cleaned pair prompt construction
   runner.py    # chat-model calls and rubric artifact writing
 ```
+
+`pair_rubric_evaluation/` is a compact judge stage that scores both trajectories
+in each pair against the mined pair-level rubrics while hiding validation labels.
+It writes pairwise accuracy and score margins under `data/pair_rubric_eval/`.
