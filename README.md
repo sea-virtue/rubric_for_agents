@@ -26,7 +26,7 @@ src/
   pair_cache/          # parsed/cache summaries -> positive/negative pair cache
   pair_rubric_extraction/ # pair cache -> pair-level candidate rubrics
   pair_rubric_evaluation/ # pair rubrics + pair cache -> pairwise discrimination scores
-  task_clustering/     # task_instruction embeddings -> data/cluster
+  task_clustering/     # pair task/query embeddings -> data/cluster
   rubric_extraction/   # data/cluster + parsed cache -> data/rubric
   rubric_evaluation/   # data/rubric + clusters/cache -> data/rubric_eval
   rubric_miner/        # shared parser/LLM/text utilities
@@ -113,7 +113,7 @@ trajectories:
   --no-truncate
 ```
 
-Start the embedding server and cluster cached tasks:
+Start the embedding server and cluster pair tasks:
 
 ```bash
 bash local_inference/start_vllm_qwen3_embedding.sh
@@ -175,7 +175,7 @@ Task clusters:
 data/cluster/task_clusters.json
 data/cluster/task_cluster_summary.json
 data/cluster/task_cluster_config.json
-data/cluster/task_instruction_embeddings.json
+data/cluster/pair_task_embeddings.json
 ```
 
 Rubrics:

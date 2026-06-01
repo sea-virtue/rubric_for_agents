@@ -19,29 +19,22 @@ if str(SRC) not in sys.path:
 from rubric_miner.llm import async_embedding_batch_call, build_client  # noqa: E402
 
 
-DEFAULT_INPUT_ROOT = Path("data/cache_data/agent-reward-bench/trajectories/cleaned")
+DEFAULT_PAIRS = Path("data/cache_pair_data")
 DEFAULT_OUTPUT_DIR = Path("data/cluster")
-DEFAULT_THRESHOLDS = "0.16,0.20,0.24,0.28,0.32"
+DEFAULT_EMBEDDING_CACHE_NAME = "pair_task_embeddings.json"
+DEFAULT_THRESHOLDS = "0.30,0.36,0.42,0.48,0.54"
 
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Cluster parsed trajectory cache files by task instruction embeddings. "
-            "This is a standalone clustering module and does not run rubric mining."
+            "Cluster positive/negative cache pairs by task instruction embeddings. "
+            "Each pair is one clustering unit; this stage does not run rubric mining."
         ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--input-root", type=Path, default=DEFAULT_INPUT_ROOT)
+    parser.add_argument("--pairs", type=Path, default=DEFAULT_PAIRS, help="Pair cache root, pair_index.json, or one pair.json.")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
-    parser.add_argument(
-        "--task-field",
-        default="task_instruct",
-        help=(
-            "Preferred task field. The loader also falls back to task_instruction, "
-            "task, instruction, and runtime_summary.task_instruction."
-        ),
-    )
     parser.add_argument(
         "--embedding-model",
         default=os.getenv("TRACE_EMBEDDING_MODEL", "qwen3-embedding-8b"),
@@ -77,35 +70,30 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         "--embedding-cache",
         type=Path,
         default=None,
-        help="Embedding cache path. Defaults to <output-dir>/task_instruction_embeddings.json.",
+        help=f"Embedding cache path. Defaults to <output-dir>/{DEFAULT_EMBEDDING_CACHE_NAME}.",
     )
     parser.add_argument("--refresh-embeddings", action="store_true")
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Only read cache files and print a preview; do not call the embedding server.",
+        help="Only read pair records and print a preview; do not call the embedding server.",
     )
     return parser.parse_args(argv)
 
 
 async def main_async(args: argparse.Namespace) -> int:
-    records = load_task_records(
-        args.input_root,
-        task_field=args.task_field,
-        max_task_chars=args.max_task_chars,
-        max_records=args.max_records,
-    )
+    records = load_pair_task_records(args.pairs, max_task_chars=args.max_task_chars, max_records=args.max_records)
     if args.dry_run:
-        print(f"input_root: {args.input_root}")
-        print(f"records_with_task: {len(records)}")
+        print(f"pairs: {args.pairs}")
+        print(f"pairs_with_task: {len(records)}")
         for record in records[:5]:
-            print(f"- {record['record_id']} | {record['task_text'][:160]}")
+            print(f"- {record['pair_id']} | {record['task_text'][:160]}")
         return 0
     if not records:
-        raise ValueError(f"No cache records with task text found under {args.input_root}")
+        raise ValueError(f"No pair records with task text found in {args.pairs}")
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    embedding_cache = args.embedding_cache or args.output_dir / "task_instruction_embeddings.json"
+    embedding_cache = args.embedding_cache or args.output_dir / DEFAULT_EMBEDDING_CACHE_NAME
     embeddings = await load_or_create_embeddings(
         records,
         cache_path=embedding_cache,
@@ -138,9 +126,8 @@ async def main_async(args: argparse.Namespace) -> int:
     )
     summary_records = build_cluster_summary(result_records)
     config = {
-        "input_root": str(args.input_root),
+        "pairs": str(args.pairs),
         "output_dir": str(args.output_dir),
-        "task_field": args.task_field,
         "embedding_model": args.embedding_model,
         "embedding_base_url": args.embedding_base_url,
         "embedding_batch_size": args.embedding_batch_size,
@@ -170,40 +157,51 @@ async def main_async(args: argparse.Namespace) -> int:
     return 0
 
 
-def load_task_records(
-    input_root: Path,
+def load_pair_task_records(
+    pairs_path: Path,
     *,
-    task_field: str,
     max_task_chars: int,
     max_records: Optional[int],
 ) -> List[Dict[str, Any]]:
-    if not input_root.exists():
-        raise FileNotFoundError(input_root)
-    paths = [input_root] if input_root.is_file() else sorted(input_root.rglob("*.json"))
+    pair_records = load_pair_records(pairs_path)
     records: List[Dict[str, Any]] = []
-    for path in paths:
-        for item_idx, payload in enumerate(iter_json_payloads(path)):
-            task_text = pick_task_text(payload, task_field)
-            if not task_text:
-                continue
-            record_id = str(payload.get("__record_id__") or f"{path.stem}_{item_idx}")
-            metadata = payload.get("metadata", {})
-            runtime = payload.get("runtime_summary", {})
-            records.append(
-                {
-                    "record_id": record_id,
-                    "source_path": str(path),
-                    "relative_source_path": relative_to_root(path),
-                    "task_text": trim_task(task_text, max_task_chars),
-                    "outcome": payload.get("outcome") or runtime.get("outcome", "unknown")
-                    if isinstance(runtime, Mapping)
-                    else payload.get("outcome", "unknown"),
-                    "metadata": metadata if isinstance(metadata, Mapping) else {},
-                }
-            )
-            if max_records is not None and len(records) >= max_records:
-                return records
+    for idx, pair in enumerate(pair_records):
+        task_text = pick_pair_task_text(pair)
+        if not task_text:
+            continue
+        pair_id = str(pair.get("pair_id") or pair.get("__record_id__") or f"pair_{idx:06d}")
+        records.append(
+            {
+                "record_id": pair_id,
+                "pair_id": pair_id,
+                "source_path": pair_source_path(pairs_path, pair),
+                "relative_source_path": pair_relative_path(pair),
+                "task_text": trim_task(task_text, max_task_chars),
+                "domain": pair.get("domain", ""),
+                "jobname": pair.get("jobname", ""),
+                "candidate_count": pair.get("candidate_count"),
+                "outcomes": pair.get("outcomes", {}),
+                "selected_records": compact_selected_records(pair.get("selected_records", [])),
+            }
+        )
+        if max_records is not None and len(records) >= max_records:
+            return records
     return records
+
+
+def load_pair_records(path: Path) -> List[Dict[str, Any]]:
+    if not path.exists():
+        raise FileNotFoundError(path)
+    if path.is_dir():
+        index_path = path / "pair_index.json"
+        if index_path.exists():
+            return load_pair_records(index_path)
+        pair_paths = sorted(path.rglob("pair.json"))
+        records: List[Dict[str, Any]] = []
+        for pair_path in pair_paths:
+            records.extend(dict(item) for item in iter_json_payloads(pair_path))
+        return records
+    return [dict(item) for item in iter_json_payloads(path) if is_pair_record(item)]
 
 
 def iter_json_payloads(path: Path) -> Iterable[Mapping[str, Any]]:
@@ -217,9 +215,15 @@ def iter_json_payloads(path: Path) -> Iterable[Mapping[str, Any]]:
         yield data
 
 
-def pick_task_text(payload: Mapping[str, Any], task_field: str) -> str:
+def is_pair_record(payload: Mapping[str, Any]) -> bool:
+    return bool(payload.get("pair_id") or payload.get("selected_records") or payload.get("responses"))
+
+
+def pick_pair_task_text(payload: Mapping[str, Any]) -> str:
+    query = payload.get("query")
+    if isinstance(query, str) and query.strip():
+        return query.strip()
     candidates = [
-        task_field,
         "task_instruct",
         "task_instruction",
         "task",
@@ -238,6 +242,44 @@ def pick_task_text(payload: Mapping[str, Any], task_field: str) -> str:
         if isinstance(value, str) and value.strip():
             return value.strip()
     return ""
+
+
+def pair_relative_path(pair: Mapping[str, Any]) -> str:
+    domain = str(pair.get("domain") or "unknown")
+    jobname = str(pair.get("jobname") or pair.get("pair_id") or pair.get("__record_id__") or "unknown")
+    return f"{domain}/{jobname}/pair.json"
+
+
+def pair_source_path(pairs_path: Path, pair: Mapping[str, Any]) -> str:
+    if pairs_path.is_file() and pairs_path.name == "pair.json":
+        return str(pairs_path)
+    root = pairs_path if pairs_path.is_dir() else pairs_path.parent
+    if root.name == "cache_pair_data":
+        return str(root / pair_relative_path(pair))
+    if (root / "pair_index.json").exists():
+        return str(root / pair_relative_path(pair))
+    return str(root / pair_relative_path(pair))
+
+
+def compact_selected_records(value: Any) -> List[Dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    keep = (
+        "__record_id__",
+        "pair_role",
+        "label_rank",
+        "outcome",
+        "domain",
+        "model_name",
+        "job_with_model",
+        "jobname",
+        "relative_source_path",
+    )
+    output = []
+    for item in value:
+        if isinstance(item, Mapping):
+            output.append({key: item.get(key) for key in keep if item.get(key) not in (None, "")})
+    return output
 
 
 async def load_or_create_embeddings(
@@ -455,13 +497,17 @@ def build_result_records(
         results.append(
             {
                 "__record_id__": record["record_id"],
+                "pair_id": record.get("pair_id", record["record_id"]),
                 "cluster_id": cluster_id,
                 "cluster_size": len(members),
                 "task_instruction": record["task_text"],
                 "source_path": record["source_path"],
                 "relative_source_path": record["relative_source_path"],
-                "outcome": record.get("outcome", "unknown"),
-                "metadata": compact_metadata(record.get("metadata", {})),
+                "domain": record.get("domain", ""),
+                "jobname": record.get("jobname", ""),
+                "candidate_count": record.get("candidate_count"),
+                "outcomes": record.get("outcomes", {}),
+                "selected_records": record.get("selected_records", []),
                 "consensus_strength": round(mean_pair_consensus(idx, members, consensus), 4),
                 "hierarchical_labels": {
                     threshold: int(labels[idx])
@@ -479,17 +525,17 @@ def build_cluster_summary(records: Sequence[Mapping[str, Any]]) -> List[Dict[str
         members_by_cluster[str(record["cluster_id"])].append(record)
     summary = []
     for cluster_id, members in members_by_cluster.items():
-        outcomes = defaultdict(int)
-        benchmarks = defaultdict(int)
-        task_families = defaultdict(int)
-        agents = defaultdict(int)
+        domains = defaultdict(int)
+        pair_outcomes = defaultdict(int)
         for member in members:
-            outcomes[str(member.get("outcome", "unknown"))] += 1
-            metadata = member.get("metadata", {})
-            if isinstance(metadata, Mapping):
-                benchmarks[str(metadata.get("benchmark", ""))] += 1
-                task_families[str(metadata.get("task_family", ""))] += 1
-                agents[str(metadata.get("agent", ""))] += 1
+            domains[str(member.get("domain", ""))] += 1
+            outcomes = member.get("outcomes", {})
+            if isinstance(outcomes, Mapping):
+                for outcome, count in outcomes.items():
+                    try:
+                        pair_outcomes[str(outcome)] += int(count)
+                    except (TypeError, ValueError):
+                        pass
         summary.append(
             {
                 "cluster_id": cluster_id,
@@ -498,12 +544,10 @@ def build_cluster_summary(records: Sequence[Mapping[str, Any]]) -> List[Dict[str
                     sum(float(member.get("consensus_strength", 0.0)) for member in members) / len(members),
                     4,
                 ),
-                "outcomes": clean_counter(outcomes),
-                "benchmarks": clean_counter(benchmarks),
-                "task_families": clean_counter(task_families),
-                "agents": clean_counter(agents),
+                "domains": clean_counter(domains),
+                "member_pair_outcomes": clean_counter(pair_outcomes),
                 "sample_tasks": [member["task_instruction"] for member in members[:8]],
-                "member_record_ids": [member["__record_id__"] for member in members],
+                "member_pair_ids": [member.get("pair_id", member["__record_id__"]) for member in members],
             }
         )
     return sorted(summary, key=lambda item: (-item["cluster_size"], item["cluster_id"]))
@@ -565,35 +609,12 @@ def trim_task(text: str, limit: int) -> str:
     return text[: max(0, limit - 16)].rstrip() + " ...[truncated]"
 
 
-def compact_metadata(metadata: Any) -> Dict[str, Any]:
-    if not isinstance(metadata, Mapping):
-        return {}
-    keep = (
-        "dataset",
-        "benchmark",
-        "agent",
-        "model",
-        "experiment",
-        "task_id",
-        "task_family",
-        "relative_source_path",
-    )
-    return {key: metadata.get(key) for key in keep if metadata.get(key) not in (None, "")}
-
-
 def clean_counter(counter: Mapping[str, int]) -> Dict[str, int]:
     return {
         key: int(value)
         for key, value in sorted(counter.items(), key=lambda item: (-item[1], item[0]))
         if key
     }
-
-
-def relative_to_root(path: Path) -> str:
-    try:
-        return str(path.resolve().relative_to(ROOT.resolve())).replace("\\", "/")
-    except ValueError:
-        return str(path).replace("\\", "/")
 
 
 def write_json(path: Path, payload: Any) -> None:

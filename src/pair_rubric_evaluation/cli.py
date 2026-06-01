@@ -160,7 +160,10 @@ async def main_async(args: argparse.Namespace) -> int:
 
     selected_pair_ids = {str(r.get("pair_id") or r.get("__record_id__")) for r, _ in selected}
     selected_results = [record for record in results if str(record.get("pair_id") or record.get("__record_id__")) in selected_pair_ids]
-    summary = build_summary(selected_results)
+    summary = {
+        "all_records": build_summary(results),
+        "current_run": build_summary(selected_results),
+    }
     write_json(summary_path, summary)
     write_json(
         config_path,

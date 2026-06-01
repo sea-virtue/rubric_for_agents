@@ -1,10 +1,10 @@
-# Cluster Cached Tasks
+# Cluster Pair Tasks
 
-`src/task_clustering/cli.py` is a standalone clustering module for parsed
-trajectory cache files. It reads task instructions from cache JSON files,
-embeds those task texts with an OpenAI-compatible embedding endpoint, runs an
-ensemble of average-linkage hierarchical clusterings, then performs a final
-consensus clustering over the co-clustering matrix.
+`src/task_clustering/cli.py` is a standalone clustering module for positive /
+negative pair cache records. Each pair is one clustering unit. The module reads
+the pair task query, embeds that text with an OpenAI-compatible embedding
+endpoint, runs an ensemble of average-linkage hierarchical clusterings, then
+performs a final consensus clustering over the co-clustering matrix.
 
 Use `scripts/cluster_cached_tasks.sh` as the normal shell entrypoint.
 
@@ -15,7 +15,7 @@ It only produces task cluster files under `data/cluster`.
 Input:
 
 ```text
-data/cache_data/agent-reward-bench/trajectories/cleaned
+data/cache_pair_data
 ```
 
 Output:
@@ -24,12 +24,12 @@ Output:
 data/cluster/task_clusters.json
 data/cluster/task_cluster_summary.json
 data/cluster/task_cluster_config.json
-data/cluster/task_instruction_embeddings.json
+data/cluster/pair_task_embeddings.json
 ```
 
-The task field defaults to `task_instruct`, with fallback support for
-`task_instruction`, `task`, `instruction`, `goal`, `prompt`, `question`, and
-`runtime_summary.task_instruction`.
+The default input resolves to `data/cache_pair_data/pair_index.json` when that
+file exists. You can also pass `--pairs` pointing at a pair cache root, a
+`pair_index.json`, or a single `pair.json`.
 
 ## Run
 
@@ -57,7 +57,9 @@ For a quick local read check without embedding calls:
 ## Important Parameters
 
 - `--thresholds`: comma-separated cosine-distance thresholds used for the
-  hierarchical clustering ensemble.
+  hierarchical clustering ensemble. Defaults are wider than the old
+  trajectory-level clustering defaults because there are currently only about
+  one hundred pair units.
 - `--consensus-threshold`: final co-clustering fraction required for consensus
   grouping.
 - `--min-cluster-size`: clusters smaller than this are split into singletons.

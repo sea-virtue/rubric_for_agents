@@ -8,7 +8,7 @@ src/
   pair_cache/        # module 2: parsed cache -> positive/negative pair cache
   pair_rubric_extraction/ # module 3: pair cache -> pair-level candidate rubrics
   pair_rubric_evaluation/ # module 4: pair rubrics -> positive/negative discrimination scores
-  task_clustering/   # module 5: embedding + hierarchical consensus clustering
+  task_clustering/   # module 5: pair task/query embedding + hierarchical consensus clustering
   rubric_extraction/ # module 6: clusters + parsed cache -> rubrics
   rubric_evaluation/ # module 7: independent rubric quality checks
   rubric_miner/      # shared parser/LLM/text utilities
