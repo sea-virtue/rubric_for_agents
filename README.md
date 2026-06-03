@@ -10,6 +10,7 @@ raw trajectories
   -> pair-level rubric extraction
   -> pair-level rubric discrimination evaluation
   -> task embedding clusters
+  -> grouped pair-rubric merge
   -> cluster-level rubric extraction
   -> rubric quality evaluation
 ```
@@ -27,6 +28,7 @@ src/
   pair_rubric_extraction/ # pair cache -> pair-level candidate rubrics
   pair_rubric_evaluation/ # pair rubrics + pair cache -> pairwise discrimination scores
   task_clustering/     # pair task/query embeddings -> data/cluster
+  rubric_merge/        # pair-level rubrics -> grouped Theme-Tips rubrics
   rubric_extraction/   # data/cluster + parsed cache -> data/rubric
   rubric_evaluation/   # data/rubric + clusters/cache -> data/rubric_eval
   rubric_miner/        # shared parser/LLM/text utilities
@@ -37,6 +39,7 @@ scripts/
   extract_pair_rubrics.sh
   evaluate_pair_rubrics.sh
   cluster_cached_tasks.sh
+  merge_pair_rubrics.sh
   extract_rubrics_from_clusters.sh
   evaluate_rubrics.sh
 
@@ -52,6 +55,7 @@ docs/
   extract_pair_rubrics.md
   evaluate_pair_rubrics.md
   cluster_cached_tasks.md
+  merge_pair_rubrics.md
   extract_rubrics_from_clusters.md
   evaluate_rubrics.md
 ```
@@ -123,6 +127,17 @@ bash local_inference/start_vllm_qwen3_embedding.sh
   --embedding-model qwen3-embedding-8b
 ```
 
+Merge pair-level rubrics by the temporary domain grouping:
+
+```bash
+./scripts/merge_pair_rubrics.sh --dry-run
+
+./scripts/merge_pair_rubrics.sh \
+  --model gpt-5.4-mini \
+  --base-url https://api.gpt.ge/v1/ \
+  --concurrency 1
+```
+
 Start the chat model and extract rubrics from clusters:
 
 ```bash
@@ -181,6 +196,9 @@ data/cluster/pair_task_embeddings.json
 Rubrics:
 
 ```text
+data/rubric_merge/domain_merged_rubrics.json
+data/rubric_merge/domain_rubric_merge_prompts.json
+data/rubric_merge/domain_rubric_merge_config.json
 data/rubric/cluster_rubrics.json
 data/rubric/rubric_prompts.json
 data/rubric/rubric_extraction_config.json

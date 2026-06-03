@@ -9,7 +9,8 @@ src/
   pair_rubric_extraction/ # module 3: pair cache -> pair-level candidate rubrics
   pair_rubric_evaluation/ # module 4: pair rubrics -> positive/negative discrimination scores
   task_clustering/   # module 5: pair task/query embedding + hierarchical consensus clustering
-  rubric_extraction/ # module 6: clusters + parsed cache -> rubrics
+  rubric_merge/      # module 6: pair-level rubrics -> grouped Theme-Tips rubrics
+  rubric_extraction/ # legacy cluster + parsed cache -> rubrics
   rubric_evaluation/ # module 7: independent rubric quality checks
   rubric_miner/      # shared parser/LLM/text utilities
 ```
@@ -52,3 +53,8 @@ pair_rubric_extraction/
 `pair_rubric_evaluation/` is a compact judge stage that scores both trajectories
 in each pair against the mined pair-level rubrics while hiding validation labels.
 It writes pairwise accuracy and score margins under `data/pair_rubric_eval/`.
+
+`rubric_merge/` merges the pair-level rubrics into broader grouped rubrics. The
+current default grouping is `domain`, which is a temporary stand-in for real
+task clusters while cluster artifacts are not available yet. The output follows
+OpenJudge's Theme-Tips aggregation style under `data/rubric_merge/`.
