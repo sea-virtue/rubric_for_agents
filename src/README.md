@@ -56,5 +56,7 @@ It writes pairwise accuracy and score margins under `data/pair_rubric_eval/`.
 
 `rubric_merge/` merges the pair-level rubrics into broader grouped rubrics. The
 current default grouping is `domain`, which is a temporary stand-in for real
-task clusters while cluster artifacts are not available yet. The output follows
-OpenJudge's Theme-Tips aggregation style under `data/rubric_merge/`.
+task clusters while cluster artifacts are not available yet. The merge stage
+first applies embedding/MCR-style representative selection over source rubric
+texts, then uses an API model to aggregate the selected rubrics into OpenJudge's
+Theme-Tips style under `data/rubric_merge/`.

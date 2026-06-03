@@ -130,6 +130,8 @@ bash local_inference/start_vllm_qwen3_embedding.sh
 Merge pair-level rubrics by the temporary domain grouping:
 
 ```bash
+bash local_inference/start_vllm_qwen3_embedding.sh
+
 ./scripts/merge_pair_rubrics.sh --dry-run
 
 ./scripts/merge_pair_rubrics.sh \
@@ -198,6 +200,7 @@ Rubrics:
 ```text
 data/rubric_merge/domain_merged_rubrics.json
 data/rubric_merge/domain_rubric_merge_prompts.json
+data/rubric_merge/domain_rubric_mcr_selection.json
 data/rubric_merge/domain_rubric_merge_config.json
 data/rubric/cluster_rubrics.json
 data/rubric/rubric_prompts.json

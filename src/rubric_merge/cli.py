@@ -32,6 +32,23 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--min-pairs", type=int, default=1)
     parser.add_argument("--max-groups", type=int, default=None)
     parser.add_argument("--num-categories", type=int, default=8, help="Maximum merged Theme-Tips categories per group.")
+    parser.add_argument(
+        "--selection-method",
+        choices=("mcr", "none"),
+        default="mcr",
+        help="Select representative source rubrics before LLM categorization.",
+    )
+    parser.add_argument("--embedding-model", default=os.getenv("RUBRIC_EMBEDDING_MODEL", "qwen3-embedding-8b"))
+    parser.add_argument(
+        "--embedding-base-url",
+        default=os.getenv("OPENAI_EMBEDDING_BASE_URL", os.getenv("EMBEDDING_BASE_URL", "http://127.0.0.1:8001/v1")),
+    )
+    parser.add_argument("--embedding-batch-size", type=int, default=16)
+    parser.add_argument("--max-selected-rubrics", type=int, default=80)
+    parser.add_argument("--mcr-batch-size", type=int, default=5)
+    parser.add_argument("--mcr-eps", type=float, default=0.1)
+    parser.add_argument("--mcr-min-increment-threshold", type=float, default=0.001)
+    parser.add_argument("--mcr-patience", type=int, default=3)
     parser.add_argument("--max-rubrics-per-group", type=int, default=180, help="Prompt cap for source pair-level rubric items; <=0 means no cap.")
     parser.add_argument("--max-chars-per-rubric", type=int, default=1200)
     parser.add_argument("--model", default=os.getenv("RUBRIC_MODEL", "gpt-5.4-mini"))
@@ -63,6 +80,10 @@ async def main_async(args: argparse.Namespace) -> int:
         print(f"pair_rubrics: {args.pair_rubrics}")
         print(f"pairs: {args.pairs}")
         print(f"grouping: {args.grouping}")
+        print(f"selection_method: {args.selection_method} (not executed in dry-run)")
+        if args.selection_method == "mcr":
+            print(f"embedding_model: {args.embedding_model}")
+            print(f"embedding_base_url: {args.embedding_base_url}")
         print(f"selected_groups: {len(groups)}")
         for group in groups[:3]:
             print(
@@ -93,6 +114,15 @@ async def main_async(args: argparse.Namespace) -> int:
         max_groups=args.max_groups,
         min_pairs=args.min_pairs,
         num_categories=args.num_categories,
+        selection_method=args.selection_method,
+        embedding_model=args.embedding_model,
+        embedding_base_url=args.embedding_base_url,
+        embedding_batch_size=args.embedding_batch_size,
+        max_selected_rubrics=args.max_selected_rubrics,
+        mcr_batch_size=args.mcr_batch_size,
+        mcr_eps=args.mcr_eps,
+        mcr_min_increment_threshold=args.mcr_min_increment_threshold,
+        mcr_patience=args.mcr_patience,
         max_rubrics_per_group=args.max_rubrics_per_group,
         max_chars_per_rubric=args.max_chars_per_rubric,
         max_tokens=args.max_tokens,

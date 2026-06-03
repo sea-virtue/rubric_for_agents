@@ -11,6 +11,7 @@ from rubric_miner.llm import async_llm_call, build_client
 
 from .io import has_error, load_json_array, parse_csv, upsert, write_json
 from .prompting import prompt_messages
+from .selector import select_group_rubrics_mcr
 
 
 async def merge_group_rubrics(
@@ -28,6 +29,15 @@ async def merge_group_rubrics(
     max_groups: int | None,
     min_pairs: int,
     num_categories: int,
+    selection_method: str,
+    embedding_model: str,
+    embedding_base_url: str,
+    embedding_batch_size: int,
+    max_selected_rubrics: int,
+    mcr_batch_size: int,
+    mcr_eps: float,
+    mcr_min_increment_threshold: float,
+    mcr_patience: int,
     max_rubrics_per_group: int,
     max_chars_per_rubric: int,
     max_tokens: int,
@@ -38,11 +48,13 @@ async def merge_group_rubrics(
     output_path = output_dir / f"{grouping}_merged_rubrics.json"
     prompt_path = output_dir / f"{grouping}_rubric_merge_prompts.json"
     raw_path = output_dir / f"{grouping}_rubric_merge_raw_outputs.json"
+    selection_path = output_dir / f"{grouping}_rubric_mcr_selection.json"
     config_path = output_dir / f"{grouping}_rubric_merge_config.json"
 
     existing = [] if refresh else load_json_array(output_path)
     prompt_records = [] if refresh else load_json_array(prompt_path)
     raw_records = [] if refresh else load_json_array(raw_path)
+    selection_records = [] if refresh else load_json_array(selection_path)
     done = {
         str(record.get("group_id") or record.get("__record_id__"))
         for record in existing
@@ -60,8 +72,36 @@ async def merge_group_rubrics(
                     return dict(record)
         async with semaphore:
             try:
+                prompt_group = dict(group)
+                selection_info: Dict[str, Any] = {
+                    "selection_method": selection_method,
+                    "source_rubric_count": group.get("rubric_count", 0),
+                }
+                if selection_method == "mcr":
+                    prompt_group, selection_info = await select_group_rubrics_mcr(
+                        group,
+                        embedding_model=embedding_model,
+                        embedding_base_url=embedding_base_url,
+                        api_key_env=api_key_env,
+                        embedding_batch_size=embedding_batch_size,
+                        max_chars_per_rubric=max_chars_per_rubric,
+                        max_selected_rubrics=max_selected_rubrics,
+                        mcr_batch_size=mcr_batch_size,
+                        eps=mcr_eps,
+                        min_increment_threshold=mcr_min_increment_threshold,
+                        patience=mcr_patience,
+                    )
+                selection_record = {
+                    "__record_id__": group_id,
+                    "group_id": group_id,
+                    "grouping": grouping,
+                    **selection_info,
+                }
+                upsert(selection_records, selection_record, key="group_id")
+                write_json(selection_path, selection_records)
+
                 messages = prompt_messages(
-                    group,
+                    prompt_group,
                     num_categories=num_categories,
                     max_rubrics_per_group=max_rubrics_per_group,
                     max_chars_per_rubric=max_chars_per_rubric,
@@ -72,7 +112,9 @@ async def merge_group_rubrics(
                     "grouping": grouping,
                     "pair_count": group.get("pair_count"),
                     "rubric_count": group.get("rubric_count"),
+                    "selected_rubric_count": prompt_group.get("selected_rubric_count"),
                     "source_pair_ids": group.get("source_pair_ids", []),
+                    "selected_pair_ids": prompt_group.get("selected_pair_ids", []),
                     "messages": messages,
                 }
                 upsert(prompt_records, prompt_record, key="group_id")
@@ -115,7 +157,10 @@ async def merge_group_rubrics(
                     "model": model,
                     "pair_count": group.get("pair_count"),
                     "source_rubric_count": group.get("rubric_count"),
+                    "selected_rubric_count": prompt_group.get("selected_rubric_count", group.get("rubric_count")),
                     "source_pair_ids": group.get("source_pair_ids", []),
+                    "selected_pair_ids": prompt_group.get("selected_pair_ids", group.get("source_pair_ids", [])),
+                    "rubric_selection": selection_info,
                     "missing_rubric_pair_ids": group.get("missing_rubric_pair_ids", []),
                     "num_categories_requested": num_categories,
                     "rubrics": rubrics,
@@ -143,6 +188,15 @@ async def merge_group_rubrics(
         "max_groups": max_groups,
         "min_pairs": min_pairs,
         "num_categories": num_categories,
+        "selection_method": selection_method,
+        "embedding_model": embedding_model if selection_method == "mcr" else None,
+        "embedding_base_url": embedding_base_url if selection_method == "mcr" else None,
+        "embedding_batch_size": embedding_batch_size if selection_method == "mcr" else None,
+        "max_selected_rubrics": max_selected_rubrics if selection_method == "mcr" else None,
+        "mcr_batch_size": mcr_batch_size if selection_method == "mcr" else None,
+        "mcr_eps": mcr_eps if selection_method == "mcr" else None,
+        "mcr_min_increment_threshold": mcr_min_increment_threshold if selection_method == "mcr" else None,
+        "mcr_patience": mcr_patience if selection_method == "mcr" else None,
         "max_rubrics_per_group": max_rubrics_per_group,
         "max_chars_per_rubric": max_chars_per_rubric,
         "max_tokens": max_tokens,
@@ -152,6 +206,7 @@ async def merge_group_rubrics(
             "merged_rubrics": str(output_path),
             "prompts": str(prompt_path),
             "raw_outputs": str(raw_path),
+            "mcr_selection": str(selection_path),
             "config": str(config_path),
         },
     }
@@ -290,4 +345,3 @@ def iter_candidates(values: Sequence[Any]) -> Iterable[Any]:
                 yield from iter_candidates(nested)
                 continue
         yield value
-
