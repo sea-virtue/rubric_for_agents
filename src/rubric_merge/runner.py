@@ -152,13 +152,17 @@ async def merge_group_rubrics(
                 return {
                     "__record_id__": group_id,
                     "group_id": group_id,
+                    "cluster_id": group.get("cluster_id"),
                     "grouping": grouping,
                     "domain": group.get("domain"),
+                    "domains": group.get("domains"),
                     "model": model,
                     "pair_count": group.get("pair_count"),
+                    "cluster_size": group.get("cluster_size", group.get("pair_count")),
                     "source_rubric_count": group.get("rubric_count"),
                     "selected_rubric_count": prompt_group.get("selected_rubric_count", group.get("rubric_count")),
                     "source_pair_ids": group.get("source_pair_ids", []),
+                    "source_record_ids": group.get("source_record_ids", group.get("source_pair_ids", [])),
                     "selected_pair_ids": prompt_group.get("selected_pair_ids", group.get("source_pair_ids", [])),
                     "rubric_selection": selection_info,
                     "missing_rubric_pair_ids": group.get("missing_rubric_pair_ids", []),
@@ -266,7 +270,15 @@ def json_object_score(item: Mapping[str, Any]) -> int:
     score = 0
     categories = item.get("categories") or item.get("rubrics") or item.get("items")
     if isinstance(categories, list):
-        score += 20 + len(categories)
+        dict_count = sum(1 for value in categories if isinstance(value, Mapping))
+        theme_count = sum(
+            1
+            for value in categories
+            if isinstance(value, Mapping) and (value.get("theme") or value.get("dimension") or value.get("criterion"))
+        )
+        tips_count = sum(1 for value in categories if isinstance(value, Mapping) and value.get("tips"))
+        string_count = sum(1 for value in categories if isinstance(value, str))
+        score += 20 + dict_count * 5 + theme_count * 3 + tips_count * 2 - string_count * 4
     if item.get("reason"):
         score += 3
     return score
@@ -277,8 +289,6 @@ def normalize_merged_categories(parsed: Mapping[str, Any]) -> List[Dict[str, Any
     output = []
     for item in iter_candidates(raw_categories):
         if not isinstance(item, Mapping):
-            if stringify_field_value(item):
-                output.append({"theme": stringify_field_value(item), "tips": []})
             continue
         theme = first_text(
             item,
@@ -310,6 +320,8 @@ def normalize_merged_categories(parsed: Mapping[str, Any]) -> List[Dict[str, Any
             tips = tips[1:]
         if not theme:
             continue
+        if looks_like_identifier_only(theme) and not tips and not item.get("verification_guide"):
+            continue
         category = {
             "theme": theme,
             "tips": tips,
@@ -327,6 +339,16 @@ def normalize_merged_categories(parsed: Mapping[str, Any]) -> List[Dict[str, Any
             category["source_pair_ids"] = source_pair_ids
         output.append(category)
     return output
+
+
+def looks_like_identifier_only(value: str) -> bool:
+    text = str(value or "").strip()
+    if not text:
+        return True
+    if "/" in text and " " not in text:
+        return True
+    lowered = text.lower()
+    return lowered.startswith(("record_", "task_cluster_", "cluster_", "rubric_"))
 
 
 def first_list(item: Mapping[str, Any], *keys: str) -> List[Any]:

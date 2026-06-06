@@ -13,7 +13,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from rubric_merge.io import build_domain_groups, load_json_array, load_pair_contexts, parse_csv  # noqa: E402
+from rubric_merge.io import build_cluster_groups, build_domain_groups, load_json_array, load_pair_contexts, parse_csv  # noqa: E402
 from rubric_merge.paths import DEFAULT_OUTPUT_DIR, DEFAULT_PAIR_RUBRICS, DEFAULT_PAIRS  # noqa: E402
 from rubric_merge.prompting import prompt_messages  # noqa: E402
 from rubric_merge.runner import merge_group_rubrics  # noqa: E402
@@ -26,9 +26,10 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument("--pair-rubrics", type=Path, default=DEFAULT_PAIR_RUBRICS)
     parser.add_argument("--pairs", type=Path, default=DEFAULT_PAIRS, help="Pair cache root, pair_index.json, or one pair.json.")
+    parser.add_argument("--clusters", type=Path, default=Path("data/cluster/task_clusters.json"))
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
-    parser.add_argument("--grouping", choices=("domain",), default="domain", help="Temporary grouping strategy before cluster files exist.")
-    parser.add_argument("--group-ids", default="", help="Comma-separated domain/group ids to process first/only.")
+    parser.add_argument("--grouping", choices=("domain", "cluster"), default="domain")
+    parser.add_argument("--group-ids", default="", help="Comma-separated domain or cluster ids to process first/only.")
     parser.add_argument("--min-pairs", type=int, default=1)
     parser.add_argument("--max-groups", type=int, default=None)
     parser.add_argument("--num-categories", type=int, default=8, help="Maximum merged Theme-Tips categories per group.")
@@ -66,19 +67,31 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
 async def main_async(args: argparse.Namespace) -> int:
     pair_rubrics = load_json_array(args.pair_rubrics)
     pair_contexts = load_pair_contexts(args.pairs)
-    groups = build_domain_groups(
-        pair_rubrics,
-        pair_contexts,
-        selected_group_ids=parse_csv(args.group_ids),
-        min_pairs=args.min_pairs,
-        max_groups=args.max_groups,
-    )
+    if args.grouping == "cluster":
+        groups = build_cluster_groups(
+            load_json_array(args.clusters),
+            pair_rubrics,
+            pair_contexts,
+            selected_group_ids=parse_csv(args.group_ids),
+            min_pairs=args.min_pairs,
+            max_groups=args.max_groups,
+        )
+    else:
+        groups = build_domain_groups(
+            pair_rubrics,
+            pair_contexts,
+            selected_group_ids=parse_csv(args.group_ids),
+            min_pairs=args.min_pairs,
+            max_groups=args.max_groups,
+        )
     if not groups:
         raise ValueError("No groups selected for rubric merge.")
 
     if args.dry_run:
         print(f"pair_rubrics: {args.pair_rubrics}")
         print(f"pairs: {args.pairs}")
+        if args.grouping == "cluster":
+            print(f"clusters: {args.clusters}")
         print(f"grouping: {args.grouping}")
         print(f"selection_method: {args.selection_method} (not executed in dry-run)")
         if args.selection_method == "mcr":
