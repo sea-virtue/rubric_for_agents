@@ -137,4 +137,3 @@ def trim_text(text: str, limit: int) -> str:
     if limit <= 0 or len(text) <= limit:
         return text
     return text[: max(0, limit - 20)].rstrip() + " ...[truncated]"
-
