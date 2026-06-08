@@ -51,7 +51,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     evaluate.add_argument("--pair-ids", default="")
     evaluate.add_argument("--softmax-temperature", type=float, default=0.05)
     evaluate.add_argument("--rubric-batch-size", type=int, default=32)
-    evaluate.add_argument("--score-top-k", type=int, default=0, help="0 scores all bank rubrics; positive values score only top-k by a_r for cost ablation.")
+    evaluate.add_argument("--score-top-k", type=int, default=32, help="Score only top-k rubrics by a_r. Use 0 to score all bank rubrics.")
     evaluate.add_argument("--max-chars-per-response", type=int, default=80000)
     evaluate.add_argument("--no-truncate", action="store_true")
     evaluate.add_argument("--card-order", choices=("priority", "source"), default="priority")
@@ -115,4 +115,3 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

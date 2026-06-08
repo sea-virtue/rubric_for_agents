@@ -19,7 +19,7 @@ default_args=(
   --concurrency "${CONCURRENCY:-1}"
   --softmax-temperature "${SOFTMAX_TEMPERATURE:-0.05}"
   --rubric-batch-size "${RUBRIC_BATCH_SIZE:-32}"
-  --score-top-k "${SCORE_TOP_K:-0}"
+  --score-top-k "${SCORE_TOP_K:-32}"
   --max-tokens "${MAX_TOKENS:-4096}"
 )
 
